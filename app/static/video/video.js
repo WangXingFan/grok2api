@@ -831,7 +831,8 @@
     let dragging = false, dragX = 0, dragY = 0, startLeft = 0, startTop = 0;
     wfFloatingBar.style.touchAction = 'none';
     wfFloatingBar.addEventListener('pointerdown', (e) => {
-      if (e.target.tagName === 'BUTTON') return;
+      // Check if click is on a button or any element inside a button (like SVG icons)
+      if (e.target.closest('button')) return;
       dragging = true; dragX = e.clientX; dragY = e.clientY;
       const rect = wfFloatingBar.getBoundingClientRect();
       startLeft = rect.left; startTop = rect.top;
