@@ -7,6 +7,8 @@
 
 基于 **FastAPI** 重构的 Grok2API，全面适配最新 Web 调用格式，支持流/非流式对话、图像生成/编辑、深度思考，号池并发与自动负载均衡一体化。
 
+### NOTE：项目近期停止接受 PR 和 暂停功能更新，最后优化一次项目结构～
+
 <img width="2562" height="1280" alt="image" src="https://github.com/user-attachments/assets/356d772a-65e1-47bd-abc8-c00bb0e2c9cc" />
 
 <br>
