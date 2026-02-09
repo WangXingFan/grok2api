@@ -93,6 +93,36 @@
   background: var(--video-surface-muted);
 }
 
+/* 参数标签网格 */
+.video-params-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.video-param-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--video-surface-muted);
+  font-size: 11px;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+.video-param-label {
+  color: var(--accents-4);
+}
+
+.video-param-value {
+  color: var(--accents-7);
+  font-weight: 600;
+  font-family: 'Geist Mono', monospace;
+}
+
 /* 视频空状态 */
 .video-empty {
   display: flex;
