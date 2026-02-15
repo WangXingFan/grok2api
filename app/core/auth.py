@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import HTTPException, status, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from app.core.config import get_config
+from app.core.config import get_config, is_public_mode
 
 DEFAULT_API_KEY = ""
 DEFAULT_APP_KEY = "grok2api"
@@ -56,6 +56,30 @@ async def verify_api_key(
         )
 
     return auth.credentials
+
+
+async def verify_api_key_if_private(
+    auth: Optional[HTTPAuthorizationCredentials] = Security(security),
+) -> Optional[str]:
+    """
+    条件认证：公开模式跳过，私有模式走 verify_api_key 逻辑。
+
+    用于功能玩法 API 端点（imagine/video/voice）。
+    """
+    if is_public_mode():
+        return None
+    return await verify_api_key(auth)
+
+
+async def verify_playground_access(
+    auth: Optional[HTTPAuthorizationCredentials] = Security(security),
+) -> Optional[str]:
+    """
+    玩法页面访问控制：公开模式直接放行，私有模式要求登录。
+    """
+    if is_public_mode():
+        return None
+    return await verify_api_key(auth)
 
 
 async def verify_app_key(

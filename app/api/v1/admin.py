@@ -10,8 +10,8 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from typing import Optional
 from pydantic import BaseModel
-from app.core.auth import verify_api_key, verify_app_key, get_admin_api_key
-from app.core.config import config, get_config
+from app.core.auth import verify_api_key, verify_api_key_if_private, verify_app_key, get_admin_api_key
+from app.core.config import config, get_config, is_public_mode
 from app.core.batch_tasks import create_task, get_task, expire_task
 from app.core.storage import get_storage, LocalStorage, RedisStorage, SQLStorage
 from app.core.exceptions import AppException
@@ -133,14 +133,27 @@ def _mask_token(token: str) -> str:
     return f"{token[:8]}...{token[-8:]}" if len(token) > 20 else token
 
 
-async def render_template(filename: str):
-    """渲染指定模板"""
+async def render_template(filename: str, **variables):
+    """渲染指定模板，支持 {{KEY}} 变量替换"""
     template_path = TEMPLATE_DIR / filename
     if not template_path.exists():
         return HTMLResponse(f"Template {filename} not found.", status_code=404)
 
     async with aiofiles.open(template_path, "r", encoding="utf-8") as f:
         content = await f.read()
+
+    # 注入默认模板变量
+    site_mode = "public" if is_public_mode() else "private"
+    auth_required = "false" if is_public_mode() else "true"
+    defaults = {
+        "SITE_MODE": site_mode,
+        "AUTH_REQUIRED": auth_required,
+    }
+    defaults.update(variables)
+
+    for key, value in defaults.items():
+        content = content.replace("{{" + key + "}}", str(value))
+
     return HTMLResponse(content)
 
 
@@ -149,6 +162,8 @@ def _sse_event(payload: dict) -> str:
 
 
 def _verify_stream_api_key(request: Request) -> None:
+    if is_public_mode():
+        return
     api_key = get_admin_api_key()
     if not api_key:
         return
@@ -213,6 +228,8 @@ async def admin_login_page():
 
 @router.get("/", include_in_schema=False)
 async def root_redirect():
+    if is_public_mode():
+        return RedirectResponse(url="/imagine")
     return RedirectResponse(url="/admin")
 
 
@@ -230,20 +247,46 @@ async def admin_token_page():
 
 @router.get("/admin/voice", response_class=HTMLResponse, include_in_schema=False)
 async def admin_voice_page():
-    """Voice Live 调试页"""
+    """Voice Live 调试页（私有模式直接渲染，公开模式重定向）"""
+    if is_public_mode():
+        return RedirectResponse(url="/voice")
     return await render_template("voice/voice.html")
 
 
 @router.get("/admin/imagine", response_class=HTMLResponse, include_in_schema=False)
 async def admin_imagine_page():
-    """Imagine 图片瀑布流"""
+    """Imagine 图片瀑布流（私有模式直接渲染，公开模式重定向）"""
+    if is_public_mode():
+        return RedirectResponse(url="/imagine")
     return await render_template("imagine/imagine.html")
 
 
 @router.get("/admin/video", response_class=HTMLResponse, include_in_schema=False)
 async def admin_video_page():
-    """Video 视频生成页"""
+    """Video 视频生成页（私有模式直接渲染，公开模式重定向）"""
+    if is_public_mode():
+        return RedirectResponse(url="/video")
     return await render_template("video/video.html")
+
+
+# === 公开路径：功能玩法页面 ===
+
+@router.get("/imagine", response_class=HTMLResponse, include_in_schema=False)
+async def public_imagine_page():
+    """Imagine 瀑布流（公开路径）"""
+    return await render_template("imagine/imagine.html")
+
+
+@router.get("/video", response_class=HTMLResponse, include_in_schema=False)
+async def public_video_page():
+    """Video 视频生成（公开路径）"""
+    return await render_template("video/video.html")
+
+
+@router.get("/voice", response_class=HTMLResponse, include_in_schema=False)
+async def public_voice_page():
+    """Voice Live 陪聊（公开路径）"""
+    return await render_template("voice/voice.html")
 
 
 class VoiceTokenResponse(BaseModel):
@@ -255,7 +298,7 @@ class VoiceTokenResponse(BaseModel):
 
 @router.get(
     "/api/v1/admin/voice/token",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_api_key_if_private)],
     response_model=VoiceTokenResponse,
 )
 async def admin_voice_token(
@@ -312,6 +355,11 @@ async def admin_voice_token(
 
 
 async def _verify_imagine_ws_auth(websocket: WebSocket) -> tuple[bool, Optional[str]]:
+    # 公开模式直接放行
+    if is_public_mode():
+        task_id = websocket.query_params.get("task_id")
+        return True, task_id if task_id else None
+
     task_id = websocket.query_params.get("task_id")
     if task_id:
         info = await _get_imagine_session(task_id)
@@ -547,7 +595,7 @@ class ImagineStartRequest(BaseModel):
     aspect_ratio: Optional[str] = "2:3"
 
 
-@router.post("/api/v1/admin/imagine/start", dependencies=[Depends(verify_api_key)])
+@router.post("/api/v1/admin/imagine/start", dependencies=[Depends(verify_api_key_if_private)])
 async def admin_imagine_start(data: ImagineStartRequest):
     prompt = (data.prompt or "").strip()
     if not prompt:
@@ -561,7 +609,7 @@ class ImagineStopRequest(BaseModel):
     task_ids: list[str]
 
 
-@router.post("/api/v1/admin/imagine/stop", dependencies=[Depends(verify_api_key)])
+@router.post("/api/v1/admin/imagine/stop", dependencies=[Depends(verify_api_key_if_private)])
 async def admin_imagine_stop(data: ImagineStopRequest):
     removed = await _delete_imagine_sessions(data.task_ids or [])
     return {"status": "success", "removed": removed}

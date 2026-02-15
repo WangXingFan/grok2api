@@ -20,7 +20,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi import Depends  # noqa: E402
 
-from app.core.auth import verify_api_key  # noqa: E402
+from app.core.auth import verify_api_key, verify_api_key_if_private  # noqa: E402
 from app.core.config import get_config  # noqa: E402
 from app.core.logger import logger, setup_logging  # noqa: E402
 from app.core.exceptions import register_exception_handlers  # noqa: E402
@@ -102,15 +102,15 @@ def create_app() -> FastAPI:
     # 注册异常处理器
     register_exception_handlers(app)
 
-    # 注册路由
+    # 注册路由（公开模式跳过 API 认证）
     app.include_router(
-        chat_router, prefix="/v1", dependencies=[Depends(verify_api_key)]
+        chat_router, prefix="/v1", dependencies=[Depends(verify_api_key_if_private)]
     )
     app.include_router(
-        image_router, prefix="/v1", dependencies=[Depends(verify_api_key)]
+        image_router, prefix="/v1", dependencies=[Depends(verify_api_key_if_private)]
     )
     app.include_router(
-        models_router, prefix="/v1", dependencies=[Depends(verify_api_key)]
+        models_router, prefix="/v1", dependencies=[Depends(verify_api_key_if_private)]
     )
     app.include_router(files_router, prefix="/v1/files")
 

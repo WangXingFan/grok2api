@@ -124,6 +124,7 @@ docker compose up -d
 | `SERVER_WORKERS`      | Uvicorn worker 数量                                 | `1`       | `2`                                               |
 | `SERVER_STORAGE_TYPE` | 存储类型（`local`/`redis`/`mysql`/`pgsql`） | `local`   | `pgsql`                                           |
 | `SERVER_STORAGE_URL`  | 存储连接串（local 时可为空）                        | `""`      | `postgresql+asyncpg://user:password@host:5432/db` |
+| `SITE_MODE`           | 站点模式（`private`/`public`）                      | `private` | `public`                                          |
 
 > MySQL 示例：`mysql+aiomysql://user:password@host:3306/db`（若填 `mysql://` 会自动转为 `mysql+aiomysql://`）
 
@@ -142,6 +143,24 @@ docker compose up -d
 - **Imagine 图片生成/编辑**：WebSocket/SSE 实时图片生成 + 图片编辑模式（二开增强）
 - **Video 视频生成**：可视化视频生成，支持图生视频（二开新增）
 - **Voice Live 陪聊**：LiveKit 语音会话
+
+#### 公开站 / 私有站模式
+
+通过 `SITE_MODE` 环境变量控制部署模式：
+
+| 模式 | 功能玩法页面 | 管理后台 | API 接口 |
+| :--- | :---------- | :------- | :------- |
+| `private`（默认） | 需要登录 | 需要登录 | 需要 API Key |
+| `public` | 无需登录，直接访问 | 仍需登录 | 无需 API Key |
+
+- **`private`**（默认）：所有页面和 API 均需认证，行为与之前完全一致
+- **`public`**：功能玩法页面（`/imagine`、`/video`、`/voice`）无需登录即可使用，管理后台（`/admin`）仍需登录认证
+
+```yaml
+# docker-compose.yml
+environment:
+  SITE_MODE: public  # 设为 public 开启公开站模式
+```
 
 <br>
 

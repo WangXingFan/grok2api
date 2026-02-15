@@ -138,7 +138,15 @@ async function requestApiKey(appKey) {
   return cachedApiKey;
 }
 
+function _isAuthRequired() {
+  return !(typeof window.__AUTH_REQUIRED__ === 'string' && window.__AUTH_REQUIRED__ === 'false');
+}
+
 async function ensureApiKey() {
+  // Public mode: skip auth, return empty string (not null)
+  if (!_isAuthRequired()) {
+    return '';
+  }
   const appKey = await getStoredAppKey();
   if (!appKey) {
     window.location.href = '/admin';
@@ -159,10 +167,11 @@ function buildAuthHeaders(apiKey) {
 
 function logout() {
   clearStoredAppKey();
-  window.location.href = '/admin';
+  window.location.href = _isAuthRequired() ? '/admin' : '/';
 }
 
 async function fetchStorageType() {
+  if (!_isAuthRequired()) return null;
   const apiKey = await ensureApiKey();
   if (apiKey === null) return null;
   try {

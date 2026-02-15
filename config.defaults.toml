@@ -10,6 +10,9 @@ api_key = ""
 image_format = "url"
 # 生成视频的格式（html 或 url）
 video_format = "html"
+# 站点模式由环境变量 SITE_MODE 控制（public/private），默认 private
+# public: 功能玩法页面（Imagine/Video/Voice）无需登录，管理后台仍需登录
+# private: 所有页面均需登录
 
 
 # ==================== 网络配置 ====================

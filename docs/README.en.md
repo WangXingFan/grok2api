@@ -126,6 +126,7 @@ Configure in the `environment` section of `docker-compose.yml`:
 | `SERVER_WORKERS` | Uvicorn worker count | `1` | `2` |
 | `SERVER_STORAGE_TYPE` | Storage type (`local`/`redis`/`mysql`/`pgsql`) | `local` | `pgsql` |
 | `SERVER_STORAGE_URL` | Storage URL (empty for local) | `""` | `postgresql+asyncpg://user:password@host:5432/db` |
+| `SITE_MODE` | Site mode (`private`/`public`) | `private` | `public` |
 
 > MySQL example: `mysql+aiomysql://user:password@host:3306/db` (if you set `mysql://`, it will be normalized to `mysql+aiomysql://`)
 
@@ -144,6 +145,24 @@ Default password: `grok2api` (config key `app.app_key`, change it in production)
 - **Imagine Generation/Editing**: WebSocket/SSE real-time image generation + image editing mode (fork enhancement)
 - **Video Generation**: Visual video generation with image-to-video support (new in fork)
 - **Voice Live**: LiveKit voice session
+
+#### Public / Private Site Mode
+
+Control deployment mode via the `SITE_MODE` environment variable:
+
+| Mode | Playground Pages | Admin Panel | API Endpoints |
+| :--- | :--------------- | :---------- | :------------ |
+| `private` (default) | Login required | Login required | API Key required |
+| `public` | Open access | Login required | No API Key needed |
+
+- **`private`** (default): All pages and APIs require authentication, same behavior as before
+- **`public`**: Playground pages (`/imagine`, `/video`, `/voice`) are accessible without login; admin panel (`/admin`) still requires authentication
+
+```yaml
+# docker-compose.yml
+environment:
+  SITE_MODE: public  # Set to public to enable open access mode
+```
 
 <br>
 

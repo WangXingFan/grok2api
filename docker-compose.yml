@@ -11,6 +11,7 @@ services:
       SERVER_WORKERS: 1
       SERVER_STORAGE_TYPE: local
       # SERVER_STORAGE_URL:
+      # SITE_MODE: private  # public = playground pages open without login; private = all pages require login
 
       # SERVER_STORAGE_TYPE: (local, redis, mysql, pgsql) default: local
       # SERVER_STORAGE_URL: (local mode is empty) default: empty

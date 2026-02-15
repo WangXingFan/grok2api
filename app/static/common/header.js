@@ -2,9 +2,23 @@ async function loadAdminHeader() {
   const container = document.getElementById('app-header');
   if (!container) return;
   try {
-    const res = await fetch('/static/common/header.html?v=4');
+    const res = await fetch('/static/common/header.html?v=5');
     if (!res.ok) return;
     container.innerHTML = await res.text();
+
+    // Detect site mode from page-injected variable
+    const siteMode = (typeof window.__SITE_MODE__ === 'string') ? window.__SITE_MODE__ : 'private';
+    const isPublic = siteMode === 'public';
+
+    // Show/hide elements based on mode
+    container.querySelectorAll('.nav-admin-only').forEach(el => {
+      el.style.display = isPublic ? 'none' : '';
+    });
+    container.querySelectorAll('.nav-public-only').forEach(el => {
+      el.style.display = isPublic ? '' : 'none';
+    });
+
+    // Highlight active nav link
     const path = window.location.pathname;
     const links = container.querySelectorAll('a[data-nav]');
     links.forEach((link) => {
@@ -20,7 +34,8 @@ async function loadAdminHeader() {
         }
       }
     });
-    if (typeof updateStorageModeButton === 'function') {
+
+    if (!isPublic && typeof updateStorageModeButton === 'function') {
       updateStorageModeButton();
     }
   } catch (e) {

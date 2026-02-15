@@ -14,7 +14,7 @@
           class="text-xs text-[var(--accents-4)] hover:text-black">@WangXingFan</a>
       </div>
       <div class="h-4 w-px bg-[var(--border)]"></div>
-      <div class="nav-group">
+      <div class="nav-group nav-admin-only">
         <button type="button" class="nav-link nav-group-trigger text-sm" aria-haspopup="true"
           aria-expanded="false">服务管理</button>
         <div class="nav-group-menu">
@@ -27,17 +27,18 @@
         <button type="button" class="nav-link nav-group-trigger text-sm" aria-haspopup="true"
           aria-expanded="false">功能玩法</button>
         <div class="nav-group-menu">
-          <a href="/admin/imagine" class="nav-link text-sm" data-nav="/admin/imagine">Imagine 瀑布流</a>
-          <a href="/admin/video" class="nav-link text-sm" data-nav="/admin/video">Video 视频生成</a>
-          <a href="/admin/voice" class="nav-link text-sm" data-nav="/admin/voice">Voice Live 陪聊</a>
+          <a href="/imagine" class="nav-link text-sm" data-nav="/imagine">Imagine 瀑布流</a>
+          <a href="/video" class="nav-link text-sm" data-nav="/video">Video 视频生成</a>
+          <a href="/voice" class="nav-link text-sm" data-nav="/voice">Voice Live 陪聊</a>
         </div>
       </div>
     </div>
     <div class="nav-actions">
-      <button id="storage-mode-btn" type="button" class="nav-action-btn" title="存储模式">-</button>
+      <a href="/admin" class="nav-action-btn nav-public-only" style="display:none;">管理后台</a>
+      <button id="storage-mode-btn" type="button" class="nav-action-btn nav-admin-only" title="存储模式">-</button>
       <a href="https://github.com/WangXingFan/grok2api/issues" target="_blank" rel="noopener"
         class="nav-action-btn">反馈</a>
-      <button onclick="logout()" type="button" class="nav-action-btn">退出</button>
+      <button onclick="logout()" type="button" class="nav-action-btn nav-admin-only">退出</button>
     </div>
   </div>
 </nav>

@@ -5,6 +5,7 @@
 - config.defaults.toml: 默认配置基线
 """
 
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict
@@ -240,4 +241,14 @@ def register_defaults(defaults: Dict[str, Any]):
     config.register_defaults(defaults)
 
 
-__all__ = ["Config", "config", "get_config", "register_defaults"]
+def get_site_mode() -> str:
+    """获取站点模式: public 或 private"""
+    return os.getenv("SITE_MODE", "private").lower()
+
+
+def is_public_mode() -> bool:
+    """是否为公开站模式"""
+    return get_site_mode() == "public"
+
+
+__all__ = ["Config", "config", "get_config", "register_defaults", "get_site_mode", "is_public_mode"]
