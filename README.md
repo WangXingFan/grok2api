@@ -131,7 +131,8 @@ docker compose up -d
 ### 管理面板
 
 访问地址：`http://<host>:8000/admin`
-默认登录密码：`grok2api`（对应配置项 `app.app_key`，建议修改）。
+登录密码来自配置项 `app.app_key`（必填，必须自定义强密码）。
+若仍使用旧默认值 `grok2api`，服务会拒绝登录（可通过临时环境变量 `ALLOW_INSECURE_DEFAULT_APP_KEY=true` 兼容旧行为）。
 
 **功能说明**：
 

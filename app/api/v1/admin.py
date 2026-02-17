@@ -166,7 +166,13 @@ def _verify_stream_api_key(request: Request) -> None:
         return
     api_key = get_admin_api_key()
     if not api_key:
-        return
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Authentication key is not configured. Set app.api_key "
+                "or a non-default app.app_key."
+            ),
+        )
     key = request.query_params.get("api_key")
     if key != api_key:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
@@ -368,7 +374,7 @@ async def _verify_imagine_ws_auth(websocket: WebSocket) -> tuple[bool, Optional[
 
     api_key = get_admin_api_key()
     if not api_key:
-        return True, None
+        return False, None
     key = websocket.query_params.get("api_key")
     return key == api_key, None
 

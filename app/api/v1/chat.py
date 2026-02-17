@@ -255,7 +255,10 @@ async def chat_completions(request: ChatCompletionRequest):
     # 参数验证
     validate_request(request)
 
-    logger.debug(f"Chat request: model={request.model}, stream={request.stream}")
+    # OpenAI 兼容：stream 未指定时默认 false（不让 chat.stream 配置覆盖 API 语义）
+    resolved_stream = request.stream if request.stream is not None else False
+
+    logger.debug(f"Chat request: model={request.model}, stream={resolved_stream}")
 
     # 检测视频模型
     model_info = ModelService.get(request.model)
@@ -268,7 +271,7 @@ async def chat_completions(request: ChatCompletionRequest):
         result = await VideoService.completions(
             model=request.model,
             messages=[msg.model_dump() for msg in request.messages],
-            stream=request.stream,
+            stream=resolved_stream,
             thinking=request.thinking,
             aspect_ratio=v_conf.aspect_ratio,
             video_length=v_conf.video_length,
@@ -279,7 +282,7 @@ async def chat_completions(request: ChatCompletionRequest):
         result = await ChatService.completions(
             model=request.model,
             messages=[msg.model_dump() for msg in request.messages],
-            stream=request.stream,
+            stream=resolved_stream,
             thinking=request.thinking,
         )
 

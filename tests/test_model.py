@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 import argparse
 import asyncio
 import json

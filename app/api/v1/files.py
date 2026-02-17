@@ -18,15 +18,34 @@ IMAGE_DIR = BASE_DIR / "image"
 VIDEO_DIR = BASE_DIR / "video"
 
 
+def _resolve_media_path(base_dir: Path, filename: str) -> Path:
+    """Resolve a safe media path under the target directory."""
+    normalized = (filename or "").strip().replace("\\", "/")
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Keep historical behavior: flatten nested segments from `{filename:path}`.
+    normalized = normalized.replace("/", "-")
+
+    # Block path tricks and drive-like payloads on Windows.
+    if normalized in {".", ".."} or ".." in normalized or ":" in normalized:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    base_path = base_dir.resolve()
+    candidate = (base_path / normalized).resolve()
+    try:
+        candidate.relative_to(base_path)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return candidate
+
+
 @router.get("/image/{filename:path}")
 async def get_image(filename: str):
     """
     获取图片文件
     """
-    if "/" in filename:
-        filename = filename.replace("/", "-")
-
-    file_path = IMAGE_DIR / filename
+    file_path = _resolve_media_path(IMAGE_DIR, filename)
 
     if await aiofiles.os.path.exists(file_path):
         if await aiofiles.os.path.isfile(file_path):
@@ -52,10 +71,7 @@ async def get_video(filename: str):
     """
     获取视频文件
     """
-    if "/" in filename:
-        filename = filename.replace("/", "-")
-
-    file_path = VIDEO_DIR / filename
+    file_path = _resolve_media_path(VIDEO_DIR, filename)
 
     if await aiofiles.os.path.exists(file_path):
         if await aiofiles.os.path.isfile(file_path):

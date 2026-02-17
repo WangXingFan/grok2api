@@ -20,7 +20,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi import Depends  # noqa: E402
 
-from app.core.auth import verify_api_key, verify_api_key_if_private  # noqa: E402
+from app.core.auth import verify_api_key_if_private  # noqa: E402
 from app.core.config import get_config  # noqa: E402
 from app.core.logger import logger, setup_logging  # noqa: E402
 from app.core.exceptions import register_exception_handlers  # noqa: E402

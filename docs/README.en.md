@@ -133,7 +133,8 @@ Configure in the `environment` section of `docker-compose.yml`:
 ### Admin Panel
 
 URL: `http://<host>:8000/admin`
-Default password: `grok2api` (config key `app.app_key`, change it in production).
+Login password comes from `app.app_key` (required, set your own strong value).
+If the legacy default `grok2api` is still used, login is rejected (set `ALLOW_INSECURE_DEFAULT_APP_KEY=true` only for temporary backward compatibility).
 
 **Features**:
 
