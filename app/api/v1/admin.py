@@ -1064,11 +1064,8 @@ async def enable_nsfw_api(data: dict):
         if not tokens:
             raise HTTPException(status_code=400, detail="No tokens available")
 
-        # 去重并截断
-        max_tokens = int(get_config("performance.nsfw_max_tokens"))
-        unique_tokens, truncated, original_count = _truncate_tokens(
-            tokens, max_tokens, "NSFW enable"
-        )
+        # 去重（不截断）
+        unique_tokens = list(dict.fromkeys(tokens))
 
         # 批量执行配置
         max_concurrent = get_config("performance.nsfw_max_concurrent")

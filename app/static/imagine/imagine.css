@@ -153,13 +153,16 @@
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 16px;
-  align-items: start;
-  padding-bottom: 8px;
+  align-items: stretch;
 }
 
 .settings-prompt {
   display: flex;
   flex-direction: column;
+}
+
+.settings-prompt .imagine-textarea {
+  flex: 1;
 }
 
 .settings-options {

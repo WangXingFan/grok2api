@@ -7,6 +7,9 @@
   const concurrentSelect = document.getElementById('concurrentSelect');
   const autoScrollToggle = document.getElementById('autoScrollToggle');
   const autoDownloadToggle = document.getElementById('autoDownloadToggle');
+  const reverseInsertToggle = document.getElementById('reverseInsertToggle');
+  const autoFilterToggle = document.getElementById('autoFilterToggle');
+  const nsfwSelect = document.getElementById('nsfwSelect');
   const selectFolderBtn = document.getElementById('selectFolderBtn');
   const folderPath = document.getElementById('folderPath');
   const statusText = document.getElementById('statusText');
@@ -231,14 +234,14 @@
     }
   }
 
-  async function createImagineTask(prompt, ratio, apiKey) {
+  async function createImagineTask(prompt, ratio, apiKey, nsfwEnabled) {
     const res = await fetch('/api/v1/admin/imagine/start', {
       method: 'POST',
       headers: {
         ...buildAuthHeaders(apiKey),
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ prompt, aspect_ratio: ratio })
+      body: JSON.stringify({ prompt, aspect_ratio: ratio, nsfw: nsfwEnabled })
     });
     if (!res.ok) {
       const text = await res.text();
@@ -248,10 +251,10 @@
     return data && data.task_id ? String(data.task_id) : '';
   }
 
-  async function createImagineTasks(prompt, ratio, concurrent, apiKey) {
+  async function createImagineTasks(prompt, ratio, concurrent, apiKey, nsfwEnabled) {
     const tasks = [];
     for (let i = 0; i < concurrent; i++) {
-      const taskId = await createImagineTask(prompt, ratio, apiKey);
+      const taskId = await createImagineTask(prompt, ratio, apiKey, nsfwEnabled);
       if (!taskId) {
         throw new Error('Missing task id');
       }
@@ -321,6 +324,15 @@
 
   function appendImage(base64, meta) {
     if (!waterfall) return;
+
+    // Auto filter: skip low-quality/blocked images (estimated < 100KB)
+    if (autoFilterToggle && autoFilterToggle.checked) {
+      const estimatedBytes = (base64 || '').length * 3 / 4;
+      if (estimatedBytes < 100000) {
+        return;
+      }
+    }
+
     if (emptyState) {
       emptyState.style.display = 'none';
     }
@@ -364,10 +376,19 @@
       item.classList.add('selection-mode');
     }
     
-    waterfall.appendChild(item);
+    // Reverse insert: newest at top; otherwise append to bottom
+    if (reverseInsertToggle && reverseInsertToggle.checked) {
+      waterfall.prepend(item);
+    } else {
+      waterfall.appendChild(item);
+    }
 
     if (autoScrollToggle && autoScrollToggle.checked) {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      if (reverseInsertToggle && reverseInsertToggle.checked) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
     }
 
     if (autoDownloadToggle && autoDownloadToggle.checked) {
@@ -511,6 +532,7 @@
 
     const concurrent = concurrentSelect ? parseInt(concurrentSelect.value, 10) : 1;
     const ratio = ratioSelect ? ratioSelect.value : '2:3';
+    const nsfwEnabled = nsfwSelect ? nsfwSelect.value === 'true' : true;
     
     if (isRunning) {
       toast('已在运行中', 'warning');
@@ -528,7 +550,7 @@
 
     let taskIds = [];
     try {
-      taskIds = await createImagineTasks(prompt, ratio, concurrent, apiKey);
+      taskIds = await createImagineTasks(prompt, ratio, concurrent, apiKey, nsfwEnabled);
     } catch (e) {
       setStatus('error', '创建任务失败');
       startBtn.disabled = false;
@@ -622,10 +644,12 @@
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const prompt = promptOverride || (promptInput ? promptInput.value.trim() : '');
     const ratio = ratioSelect ? ratioSelect.value : '2:3';
+    const nsfwWs = nsfwSelect ? nsfwSelect.value === 'true' : true;
     const payload = {
       type: 'start',
       prompt,
-      aspect_ratio: ratio
+      aspect_ratio: ratio,
+      nsfw: nsfwWs
     };
     ws.send(JSON.stringify(payload));
     updateError('');

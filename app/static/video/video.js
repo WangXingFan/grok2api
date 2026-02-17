@@ -390,6 +390,9 @@
   }
 
   function clearHistory() {
+    // Delete all cached source files before clearing
+    const history = loadHistory();
+    history.forEach(item => _deleteCachedFile(item));
     try {
       localStorage.removeItem(HISTORY_KEY);
     } catch (e) {
@@ -402,10 +405,42 @@
   function deleteHistoryItem(index) {
     const history = loadHistory();
     if (index >= 0 && index < history.length) {
+      const item = history[index];
+      // Try to delete the cached source file on server
+      _deleteCachedFile(item);
       history.splice(index, 1);
       saveHistory(history);
       renderHistory();
     }
+  }
+
+  function _deleteCachedFile(item) {
+    if (!item || !item.content) return;
+    // Extract video file path from content (URL or HTML)
+    let url = null;
+    if (item.type === 'url') {
+      url = item.content.trim();
+    } else {
+      // Try to extract URL from HTML content
+      const match = item.content.match(/https?:\/\/[^\s"'<>]+/i);
+      if (match) url = match[0];
+    }
+    if (!url) return;
+
+    // Extract filename from /v1/files/video/xxx pattern
+    const fileMatch = url.match(/\/v1\/files\/video\/(.+?)(?:\?|$)/);
+    if (!fileMatch) return;
+    const filename = decodeURIComponent(fileMatch[1]);
+
+    // Fire-and-forget: delete the cached file
+    ensureApiKey().then(apiKey => {
+      if (!apiKey) return;
+      fetch('/api/v1/admin/cache/item/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...buildAuthHeaders(apiKey) },
+        body: JSON.stringify({ type: 'video', name: filename })
+      }).catch(() => {});
+    }).catch(() => {});
   }
 
   function renderHistory() {
@@ -946,6 +981,7 @@
   // Clear all
   if (wfClearBtn) wfClearBtn.addEventListener('click', () => {
     if (waterfallRunning) stopWaterfall();
+    wfItems.forEach(item => _deleteCachedFile(item));
     wfItems = [];
     wfSaveItems();
     wfRender();
@@ -966,6 +1002,8 @@
   if (floatDelete) floatDelete.addEventListener('click', () => {
     if (wfSelected.size === 0) return;
     const count = wfSelected.size;
+    const toDelete = wfItems.filter(item => wfSelected.has(item.id));
+    toDelete.forEach(item => _deleteCachedFile(item));
     wfItems = wfItems.filter(item => !wfSelected.has(item.id));
     wfSaveItems(); wfExitSelectionMode(); wfRender();
     toast('已删除 ' + count + ' 个视频', 'success');

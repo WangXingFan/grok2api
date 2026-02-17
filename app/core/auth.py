@@ -37,8 +37,6 @@ def get_admin_api_key() -> str:
         return ""
 
     app_key = (get_config("app.app_key", DEFAULT_APP_KEY) or "").strip()
-    if app_key == LEGACY_DEFAULT_APP_KEY and not _allow_insecure_default_app_key():
-        return ""
     return app_key
 
 
@@ -101,16 +99,6 @@ async def verify_app_key(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="App key is not configured",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if app_key == LEGACY_DEFAULT_APP_KEY and not _allow_insecure_default_app_key():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Default app_key is disabled for security. "
-                "Please set app.app_key to a custom value."
-            ),
             headers={"WWW-Authenticate": "Bearer"},
         )
 

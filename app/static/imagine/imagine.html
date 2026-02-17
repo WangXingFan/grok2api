@@ -78,6 +78,13 @@
                       <option value="3">3 个任务</option>
                     </select>
                   </div>
+                  <div>
+                    <label class="field-label" for="nsfwSelect">是否 NSFW</label>
+                    <select id="nsfwSelect" class="geist-input">
+                      <option value="true">开启</option>
+                      <option value="false">关闭</option>
+                    </select>
+                  </div>
                 </div>
               </div>
               
@@ -97,6 +104,22 @@
                       <input id="autoDownloadToggle" type="checkbox">
                       <span class="toggle-track"></span>
                       <span class="toggle-label">自动保存图片</span>
+                    </label>
+                  </div>
+                  <div class="settings-toggle">
+                    <label class="field-label" for="autoFilterToggle">自动过滤</label>
+                    <label class="toggle">
+                      <input id="autoFilterToggle" type="checkbox">
+                      <span class="toggle-track"></span>
+                      <span class="toggle-label">过滤不达标图片</span>
+                    </label>
+                  </div>
+                  <div class="settings-toggle">
+                    <label class="field-label" for="reverseInsertToggle">反向新增</label>
+                    <label class="toggle">
+                      <input id="reverseInsertToggle" type="checkbox">
+                      <span class="toggle-track"></span>
+                      <span class="toggle-label">最新显示在上方</span>
                     </label>
                   </div>
                 </div>
