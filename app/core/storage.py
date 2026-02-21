@@ -568,6 +568,24 @@ class SQLStorage(BaseStorage):
             connect_args["statement_cache_size"] = 0
             logger.info("SQLStorage: PostgreSQL 模式，已禁用 statement cache (兼容 PgBouncer)")
 
+        # MySQL/MariaDB: parse SSL params from URL query string
+        # aiomysql needs ssl.SSLContext in connect_args, not URL params
+        if self.dialect in ("mysql", "mariadb"):
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            ssl_val = qs.pop("ssl", [None])[0]
+            if ssl_val and ssl_val.lower() in ("true", "1", "yes"):
+                import ssl as _ssl
+
+                ssl_ctx = _ssl.create_default_context()
+                connect_args["ssl"] = ssl_ctx
+                logger.info("SQLStorage: MySQL SSL enabled (TiDB Cloud / Serverless compatible)")
+            # rebuild URL without the ssl param (aiomysql doesn't recognize it)
+            remaining_qs = urlencode(qs, doseq=True)
+            url = urlunparse(parsed._replace(query=remaining_qs))
+
         # Serverless 友好的连接池配置
         self.engine = create_async_engine(
             url,
@@ -594,7 +612,8 @@ class SQLStorage(BaseStorage):
                 await conn.execute(
                     text("""
                     CREATE TABLE IF NOT EXISTS tokens (
-                        token VARCHAR(512) PRIMARY KEY,
+                        token_id CHAR(64) PRIMARY KEY,
+                        token TEXT NOT NULL,
                         pool_name VARCHAR(64) NOT NULL,
                         status VARCHAR(16),
                         quota INT,
@@ -644,6 +663,7 @@ class SQLStorage(BaseStorage):
 
                 # 补齐旧表字段
                 columns = [
+                    ("token_id", "CHAR(64)"),
                     ("status", "VARCHAR(16)"),
                     ("quota", "INT"),
                     ("created_at", "BIGINT"),
@@ -682,13 +702,13 @@ class SQLStorage(BaseStorage):
                 try:
                     if self.dialect in ("mysql", "mariadb"):
                         await conn.execute(
-                            text("ALTER TABLE tokens MODIFY token VARCHAR(512)")
+                            text("ALTER TABLE tokens MODIFY token TEXT")
                         )
                         await conn.execute(text("ALTER TABLE tokens MODIFY data TEXT"))
                     elif self.dialect in ("postgres", "postgresql", "pgsql"):
                         await conn.execute(
                             text(
-                                "ALTER TABLE tokens ALTER COLUMN token TYPE VARCHAR(512)"
+                                "ALTER TABLE tokens ALTER COLUMN token TYPE TEXT"
                             )
                         )
                         await conn.execute(
@@ -696,6 +716,56 @@ class SQLStorage(BaseStorage):
                         )
                 except Exception:
                     pass
+
+                # 迁移旧主键: token VARCHAR -> token_id CHAR(64)
+                try:
+                    if self.dialect in ("mysql", "mariadb"):
+                        res = await conn.execute(text(
+                            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+                            "WHERE TABLE_NAME = 'tokens' AND CONSTRAINT_NAME = 'PRIMARY' "
+                            "AND TABLE_SCHEMA = DATABASE()"
+                        ))
+                        pk_cols = [row[0] for row in res.fetchall()]
+                        if "token" in pk_cols and "token_id" not in pk_cols:
+                            # 用 MySQL SHA2 填充 token_id
+                            await conn.execute(text(
+                                "UPDATE tokens SET token_id = SHA2(token, 256) "
+                                "WHERE token_id IS NULL OR token_id = ''"
+                            ))
+                            # 切换主键
+                            await conn.execute(text(
+                                "ALTER TABLE tokens DROP PRIMARY KEY, ADD PRIMARY KEY (token_id)"
+                            ))
+                            logger.info("SQLStorage: PK migrated token -> token_id")
+                    elif self.dialect in ("postgres", "postgresql", "pgsql"):
+                        res = await conn.execute(text(
+                            "SELECT a.attname FROM pg_index i "
+                            "JOIN pg_attribute a ON a.attrelid = i.indrelid "
+                            "AND a.attnum = ANY(i.indkey) "
+                            "WHERE i.indrelid = 'tokens'::regclass AND i.indisprimary"
+                        ))
+                        pk_cols = [row[0] for row in res.fetchall()]
+                        if "token" in pk_cols and "token_id" not in pk_cols:
+                            await conn.execute(text(
+                                "UPDATE tokens SET token_id = "
+                                "encode(sha256(token::bytea), 'hex') "
+                                "WHERE token_id IS NULL OR token_id = ''"
+                            ))
+                            res2 = await conn.execute(text(
+                                "SELECT conname FROM pg_constraint "
+                                "WHERE conrelid = 'tokens'::regclass AND contype = 'p'"
+                            ))
+                            constraint_name = res2.scalar()
+                            if constraint_name:
+                                await conn.execute(text(
+                                    f"ALTER TABLE tokens DROP CONSTRAINT {constraint_name}"
+                                ))
+                            await conn.execute(text(
+                                "ALTER TABLE tokens ADD PRIMARY KEY (token_id)"
+                            ))
+                            logger.info("SQLStorage: PK migrated token -> token_id")
+                except Exception as e:
+                    logger.warning(f"SQLStorage: PK migration skipped (may already be done): {e}")
 
             await self._migrate_legacy_tokens()
             self._initialized = True
@@ -742,6 +812,7 @@ class SQLStorage(BaseStorage):
         if isinstance(token_str, str) and token_str.startswith("sso="):
             token_str = token_str[4:]
 
+        token_id = hashlib.sha256(token_str.encode("utf-8")).hexdigest()
         status = self._normalize_status(token_data.get("status"))
         tags_json = self._normalize_tags(token_data.get("tags"))
         data_json = json_dumps_sorted(token_data)
@@ -751,6 +822,7 @@ class SQLStorage(BaseStorage):
             note = ""
 
         return {
+            "token_id": token_id,
             "token": token_str,
             "pool_name": pool_name,
             "status": status,
@@ -844,7 +916,7 @@ class SQLStorage(BaseStorage):
                         "data=:data, "
                         "data_hash=:data_hash, "
                         "updated_at=:updated_at "
-                        "WHERE token=:token"
+                        "WHERE token_id=:token_id"
                     ),
                     params,
                 )
@@ -1063,7 +1135,7 @@ class SQLStorage(BaseStorage):
             return
 
         updates = []
-        new_tokens = set()
+        new_token_ids = set()
         for pool_name, tokens in (data or {}).items():
             for t in tokens:
                 if isinstance(t, dict):
@@ -1081,15 +1153,16 @@ class SQLStorage(BaseStorage):
                 token_data["pool_name"] = pool_name
                 token_data["_update_kind"] = "state"
                 updates.append(token_data)
-                new_tokens.add(token_str)
+                token_id = hashlib.sha256(token_str.encode("utf-8")).hexdigest()
+                new_token_ids.add(token_id)
 
         try:
-            existing_tokens = set()
+            existing_token_ids = set()
             async with self.async_session() as session:
-                res = await session.execute(text("SELECT token FROM tokens"))
+                res = await session.execute(text("SELECT token_id FROM tokens"))
                 rows = res.fetchall()
-                existing_tokens = {row[0] for row in rows}
-            tokens_to_delete = list(existing_tokens - new_tokens)
+                existing_token_ids = {row[0] for row in rows}
+            tokens_to_delete = list(existing_token_ids - new_token_ids)
             await self.save_tokens_delta(updates, tokens_to_delete)
         except Exception as e:
             logger.error(f"SQLStorage: 保存 Token 失败: {e}")
@@ -1106,13 +1179,13 @@ class SQLStorage(BaseStorage):
                 deleted_set = set(deleted or [])
                 if deleted_set:
                     delete_stmt = text(
-                        "DELETE FROM tokens WHERE token IN :tokens"
-                    ).bindparams(bindparam("tokens", expanding=True))
+                        "DELETE FROM tokens WHERE token_id IN :token_ids"
+                    ).bindparams(bindparam("token_ids", expanding=True))
                     chunk_size = 500
                     deleted_list = list(deleted_set)
                     for i in range(0, len(deleted_list), chunk_size):
                         chunk = deleted_list[i : i + chunk_size]
-                        await session.execute(delete_stmt, {"tokens": chunk})
+                        await session.execute(delete_stmt, {"token_ids": chunk})
 
                 updates = []
                 usage_updates = []
@@ -1124,7 +1197,8 @@ class SQLStorage(BaseStorage):
                     token_str = item.get("token")
                     if not pool_name or not token_str:
                         continue
-                    if token_str in deleted_set:
+                    token_id = hashlib.sha256(token_str.encode("utf-8")).hexdigest() if token_str else None
+                    if token_id and token_id in deleted_set:
                         continue
                     update_kind = item.get("_update_kind", "state")
                     token_data = {
@@ -1141,15 +1215,16 @@ class SQLStorage(BaseStorage):
                 if updates:
                     if self.dialect in ("mysql", "mariadb"):
                         upsert_stmt = text(
-                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "INSERT INTO tokens (token_id, token, pool_name, status, quota, created_at, "
                             "last_used_at, use_count, fail_count, last_fail_at, "
                             "last_fail_reason, last_sync_at, tags, note, "
                             "last_asset_clear_at, data, data_hash, updated_at) "
-                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            "VALUES (:token_id, :token, :pool_name, :status, :quota, :created_at, "
                             ":last_used_at, :use_count, :fail_count, :last_fail_at, "
                             ":last_fail_reason, :last_sync_at, :tags, :note, "
                             ":last_asset_clear_at, :data, :data_hash, :updated_at) "
                             "ON DUPLICATE KEY UPDATE "
+                            "token=VALUES(token), "
                             "pool_name=VALUES(pool_name), "
                             "status=VALUES(status), "
                             "quota=VALUES(quota), "
@@ -1169,15 +1244,16 @@ class SQLStorage(BaseStorage):
                         )
                     elif self.dialect in ("postgres", "postgresql", "pgsql"):
                         upsert_stmt = text(
-                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "INSERT INTO tokens (token_id, token, pool_name, status, quota, created_at, "
                             "last_used_at, use_count, fail_count, last_fail_at, "
                             "last_fail_reason, last_sync_at, tags, note, "
                             "last_asset_clear_at, data, data_hash, updated_at) "
-                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            "VALUES (:token_id, :token, :pool_name, :status, :quota, :created_at, "
                             ":last_used_at, :use_count, :fail_count, :last_fail_at, "
                             ":last_fail_reason, :last_sync_at, :tags, :note, "
                             ":last_asset_clear_at, :data, :data_hash, :updated_at) "
-                            "ON CONFLICT (token) DO UPDATE SET "
+                            "ON CONFLICT (token_id) DO UPDATE SET "
+                            "token=EXCLUDED.token, "
                             "pool_name=EXCLUDED.pool_name, "
                             "status=EXCLUDED.status, "
                             "quota=EXCLUDED.quota, "
@@ -1197,11 +1273,11 @@ class SQLStorage(BaseStorage):
                         )
                     else:
                         upsert_stmt = text(
-                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "INSERT INTO tokens (token_id, token, pool_name, status, quota, created_at, "
                             "last_used_at, use_count, fail_count, last_fail_at, "
                             "last_fail_reason, last_sync_at, tags, note, "
                             "last_asset_clear_at, data, data_hash, updated_at) "
-                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            "VALUES (:token_id, :token, :pool_name, :status, :quota, :created_at, "
                             ":last_used_at, :use_count, :fail_count, :last_fail_at, "
                             ":last_fail_reason, :last_sync_at, :tags, :note, "
                             ":last_asset_clear_at, :data, :data_hash, :updated_at)"
@@ -1211,15 +1287,16 @@ class SQLStorage(BaseStorage):
                 if usage_updates:
                     if self.dialect in ("mysql", "mariadb"):
                         usage_stmt = text(
-                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "INSERT INTO tokens (token_id, token, pool_name, status, quota, created_at, "
                             "last_used_at, use_count, fail_count, last_fail_at, "
                             "last_fail_reason, last_sync_at, tags, note, "
                             "last_asset_clear_at, data, data_hash, updated_at) "
-                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            "VALUES (:token_id, :token, :pool_name, :status, :quota, :created_at, "
                             ":last_used_at, :use_count, :fail_count, :last_fail_at, "
                             ":last_fail_reason, :last_sync_at, :tags, :note, "
                             ":last_asset_clear_at, :data, :data_hash, :updated_at) "
                             "ON DUPLICATE KEY UPDATE "
+                            "token=VALUES(token), "
                             "pool_name=VALUES(pool_name), "
                             "status=VALUES(status), "
                             "quota=VALUES(quota), "
@@ -1233,15 +1310,16 @@ class SQLStorage(BaseStorage):
                         )
                     elif self.dialect in ("postgres", "postgresql", "pgsql"):
                         usage_stmt = text(
-                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "INSERT INTO tokens (token_id, token, pool_name, status, quota, created_at, "
                             "last_used_at, use_count, fail_count, last_fail_at, "
                             "last_fail_reason, last_sync_at, tags, note, "
                             "last_asset_clear_at, data, data_hash, updated_at) "
-                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            "VALUES (:token_id, :token, :pool_name, :status, :quota, :created_at, "
                             ":last_used_at, :use_count, :fail_count, :last_fail_at, "
                             ":last_fail_reason, :last_sync_at, :tags, :note, "
                             ":last_asset_clear_at, :data, :data_hash, :updated_at) "
-                            "ON CONFLICT (token) DO UPDATE SET "
+                            "ON CONFLICT (token_id) DO UPDATE SET "
+                            "token=EXCLUDED.token, "
                             "pool_name=EXCLUDED.pool_name, "
                             "status=EXCLUDED.status, "
                             "quota=EXCLUDED.quota, "
@@ -1255,11 +1333,11 @@ class SQLStorage(BaseStorage):
                         )
                     else:
                         usage_stmt = text(
-                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "INSERT INTO tokens (token_id, token, pool_name, status, quota, created_at, "
                             "last_used_at, use_count, fail_count, last_fail_at, "
                             "last_fail_reason, last_sync_at, tags, note, "
                             "last_asset_clear_at, data, data_hash, updated_at) "
-                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            "VALUES (:token_id, :token, :pool_name, :status, :quota, :created_at, "
                             ":last_used_at, :use_count, :fail_count, :last_fail_at, "
                             ":last_fail_reason, :last_sync_at, :tags, :note, "
                             ":last_asset_clear_at, :data, :data_hash, :updated_at)"
