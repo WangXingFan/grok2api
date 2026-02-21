@@ -3,7 +3,6 @@ FROM python:3.13-alpine AS builder
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
-    # 把 uv 包安装到系统 Python 环境
     UV_PROJECT_ENVIRONMENT=/opt/venv
 
 # 确保 uv 的 bin 目录
@@ -27,14 +26,17 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-dev --no-install-project \
-    && find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + \
-    && find /opt/venv -type f -name "*.pyc" -delete \
-    && find /opt/venv -type d -name "tests" -prune -exec rm -rf {} + \
-    && find /opt/venv -type d -name "test" -prune -exec rm -rf {} + \
-    && find /opt/venv -type d -name "testing" -prune -exec rm -rf {} + \
-    && find /opt/venv -type f -name "*.so" -exec strip --strip-unneeded {} + || true \
-    && rm -rf /root/.cache /tmp/uv-cache
+# Install dependencies (separate RUN to avoid error masking)
+RUN uv sync --frozen --no-dev --no-install-project
+
+# Cleanup: remove cache, tests, strip .so files
+RUN find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + ; \
+    find /opt/venv -type f -name "*.pyc" -delete ; \
+    find /opt/venv -type d -name "tests" -prune -exec rm -rf {} + ; \
+    find /opt/venv -type d -name "test" -prune -exec rm -rf {} + ; \
+    find /opt/venv -type d -name "testing" -prune -exec rm -rf {} + ; \
+    find /opt/venv -type f -name "*.so" -exec strip --strip-unneeded {} + || true ; \
+    rm -rf /root/.cache /tmp/uv-cache
 
 FROM python:3.13-alpine
 
