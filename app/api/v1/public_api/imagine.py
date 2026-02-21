@@ -1,7 +1,7 @@
 import asyncio
 import time
 import uuid
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
 import orjson
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -31,34 +31,6 @@ async def _clean_sessions(now: float) -> None:
     ]
     for key in expired:
         _IMAGINE_SESSIONS.pop(key, None)
-
-
-def _parse_sse_chunk(chunk: str) -> Optional[Dict[str, Any]]:
-    if not chunk:
-        return None
-    event = None
-    data_lines: List[str] = []
-    for raw in str(chunk).splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        if line.startswith("event:"):
-            event = line[6:].strip()
-            continue
-        if line.startswith("data:"):
-            data_lines.append(line[5:].strip())
-    if not data_lines:
-        return None
-    data_str = "\n".join(data_lines)
-    if data_str == "[DONE]":
-        return None
-    try:
-        payload = orjson.loads(data_str)
-    except orjson.JSONDecodeError:
-        return None
-    if event and isinstance(payload, dict) and "type" not in payload:
-        payload["type"] = event
-    return payload
 
 
 async def _new_session(prompt: str, aspect_ratio: str, nsfw: Optional[bool]) -> str:
@@ -171,6 +143,7 @@ async def public_imagine_ws(websocket: WebSocket):
 
         token_mgr = await get_token_manager()
         run_id = uuid.uuid4().hex
+        sequence = 0
 
         await _send(
             {
@@ -204,6 +177,7 @@ async def public_imagine_ws(websocket: WebSocket):
                     await asyncio.sleep(2)
                     continue
 
+                start_at = time.time()
                 result = await ImageGenerationService().generate(
                     token_mgr=token_mgr,
                     token=token,
@@ -213,38 +187,34 @@ async def public_imagine_ws(websocket: WebSocket):
                     response_format="b64_json",
                     size="1024x1024",
                     aspect_ratio=aspect_ratio,
-                    stream=True,
+                    stream=False,
                     enable_nsfw=nsfw,
                 )
-                if result.stream:
-                    async for chunk in result.data:
-                        payload = _parse_sse_chunk(chunk)
-                        if not payload:
-                            continue
-                        if isinstance(payload, dict):
-                            payload.setdefault("run_id", run_id)
-                        await _send(payload)
-                else:
-                    images = [img for img in result.data if img and img != "error"]
-                    if images:
-                        for img_b64 in images:
-                            await _send(
-                                {
-                                    "type": "image",
-                                    "b64_json": img_b64,
-                                    "created_at": int(time.time() * 1000),
-                                    "aspect_ratio": aspect_ratio,
-                                    "run_id": run_id,
-                                }
-                            )
-                    else:
+                elapsed_ms = int((time.time() - start_at) * 1000)
+
+                images = [img for img in result.data if img and img != "error"]
+                if images:
+                    for img_b64 in images:
+                        sequence += 1
                         await _send(
                             {
-                                "type": "error",
-                                "message": "Image generation returned empty data.",
-                                "code": "empty_image",
+                                "type": "image",
+                                "b64_json": img_b64,
+                                "sequence": sequence,
+                                "created_at": int(time.time() * 1000),
+                                "elapsed_ms": elapsed_ms,
+                                "aspect_ratio": aspect_ratio,
+                                "run_id": run_id,
                             }
                         )
+                else:
+                    await _send(
+                        {
+                            "type": "error",
+                            "message": "Image generation returned empty data.",
+                            "code": "empty_image",
+                        }
+                    )
 
             except asyncio.CancelledError:
                 break
@@ -409,6 +379,7 @@ async def public_imagine_sse(
                         await asyncio.sleep(2)
                         continue
 
+                    start_at = time.time()
                     result = await ImageGenerationService().generate(
                         token_mgr=token_mgr,
                         token=token,
@@ -418,35 +389,29 @@ async def public_imagine_sse(
                         response_format="b64_json",
                         size="1024x1024",
                         aspect_ratio=ratio,
-                        stream=True,
+                        stream=False,
                         enable_nsfw=nsfw,
                     )
-                    if result.stream:
-                        async for chunk in result.data:
-                            payload = _parse_sse_chunk(chunk)
-                            if not payload:
-                                continue
-                            if isinstance(payload, dict):
-                                payload.setdefault("run_id", run_id)
+                    elapsed_ms = int((time.time() - start_at) * 1000)
+
+                    images = [img for img in result.data if img and img != "error"]
+                    if images:
+                        for img_b64 in images:
+                            sequence += 1
+                            payload = {
+                                "type": "image",
+                                "b64_json": img_b64,
+                                "sequence": sequence,
+                                "created_at": int(time.time() * 1000),
+                                "elapsed_ms": elapsed_ms,
+                                "aspect_ratio": ratio,
+                                "run_id": run_id,
+                            }
                             yield f"data: {orjson.dumps(payload).decode()}\n\n"
                     else:
-                        images = [img for img in result.data if img and img != "error"]
-                        if images:
-                            for img_b64 in images:
-                                sequence += 1
-                                payload = {
-                                    "type": "image",
-                                    "b64_json": img_b64,
-                                    "sequence": sequence,
-                                    "created_at": int(time.time() * 1000),
-                                    "aspect_ratio": ratio,
-                                    "run_id": run_id,
-                                }
-                                yield f"data: {orjson.dumps(payload).decode()}\n\n"
-                        else:
-                            yield (
-                                f"data: {orjson.dumps({'type': 'error', 'message': 'Image generation returned empty data.', 'code': 'empty_image'}).decode()}\n\n"
-                            )
+                        yield (
+                            f"data: {orjson.dumps({'type': 'error', 'message': 'Image generation returned empty data.', 'code': 'empty_image'}).decode()}\n\n"
+                        )
                 except asyncio.CancelledError:
                     break
                 except Exception as e:

@@ -23,7 +23,7 @@
   let isSending = false;
   let abortController = null;
   let attachment = null;
-  const feedbackUrl = 'https://github.com/chenyme/grok2api/issues/new';
+  const feedbackUrl = 'https://github.com/WangXingFan/grok2api/issues/new';
 
   function toast(message, type) {
     if (typeof showToast === 'function') {

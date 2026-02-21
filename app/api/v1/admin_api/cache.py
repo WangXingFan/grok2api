@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 
 from app.core.auth import verify_app_key
 from app.core.batch import create_task, expire_task
@@ -442,4 +443,92 @@ async def load_cache_async(data: dict):
         "task_id": task.id,
         "total": len(selected_tokens),
     }
+
+
+@router.post("/cache/download", dependencies=[Depends(verify_app_key)])
+async def download_cache_files(data: dict):
+    """Download local cache files. Single file returns directly; multiple files as ZIP."""
+    import os
+    import zipfile
+    import tempfile
+    import mimetypes
+    from datetime import datetime
+    from starlette.background import BackgroundTask
+    from app.services.grok.utils.cache import CacheService
+
+    cache_type = data.get("type", "image")
+    names = data.get("names", [])
+
+    if not names or not isinstance(names, list):
+        raise HTTPException(status_code=400, detail="No files specified")
+
+    cache_service = CacheService()
+    base_dir = cache_service.image_dir if cache_type == "image" else cache_service.video_dir
+
+    def _safe_path(name: str):
+        """Validate filename and return resolved path or None."""
+        if not name or ".." in name or "/" in name or "\\" in name or ":" in name:
+            return None
+        fp = base_dir / name
+        try:
+            if fp.resolve().parent != base_dir.resolve():
+                return None
+        except (ValueError, OSError):
+            return None
+        if fp.exists() and fp.is_file():
+            return fp
+        return None
+
+    # Single file: return directly without ZIP wrapping
+    if len(names) == 1:
+        fp = _safe_path(names[0])
+        if not fp:
+            raise HTTPException(status_code=404, detail="File not found")
+        media_type = mimetypes.guess_type(str(fp))[0] or "application/octet-stream"
+        return FileResponse(
+            fp,
+            media_type=media_type,
+            filename=fp.name,
+            headers={"Content-Disposition": f'attachment; filename="{fp.name}"'},
+        )
+
+    # Multiple files: pack into ZIP
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    try:
+        packed = 0
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as zf:
+            for name in names:
+                fp = _safe_path(name)
+                if fp:
+                    zf.write(fp, name)
+                    packed += 1
+        tmp.close()
+
+        if packed == 0:
+            os.unlink(tmp.name)
+            raise HTTPException(status_code=404, detail="No valid files found")
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_name = f"{cache_type}_{timestamp}.zip"
+
+        async def cleanup():
+            try:
+                os.unlink(tmp.name)
+            except Exception:
+                pass
+
+        return FileResponse(
+            tmp.name,
+            media_type="application/zip",
+            filename=zip_name,
+            background=BackgroundTask(cleanup),
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Failed to create ZIP archive")
 

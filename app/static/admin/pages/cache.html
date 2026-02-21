@@ -163,7 +163,7 @@
         加载
       </button>
       <button id="btn-download-local" onclick="handleDownloadClick()"
-        class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100">
+        class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100 hidden">
         下载
       </button>
       <button id="btn-delete-assets" onclick="handleDeleteClick()" class="geist-button-danger text-xs px-3">
@@ -177,6 +177,13 @@
       <button id="btn-stop-action" type="button" class="batch-link hidden">终止</button>
     </div>
   </div>
+
+  <dialog id="video-preview-dialog">
+    <div class="video-preview-wrapper">
+      <button id="video-preview-close" type="button" class="video-preview-close">&times;</button>
+      <video id="video-preview-player" controls autoplay></video>
+    </div>
+  </dialog>
 
   <dialog id="confirm-dialog" class="confirm-dialog">
     <div class="confirm-dialog-body">

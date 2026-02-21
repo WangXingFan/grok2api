@@ -76,16 +76,37 @@ class CacheService:
         return {"total": total, "page": page, "page_size": page_size, "items": paged}
 
     def delete_file(self, media_type: str, name: str) -> Dict[str, Any]:
+        """Delete a cached file. For videos, also clean up associated preview images."""
         cache_dir = self._cache_dir(media_type)
         file_path = cache_dir / name.replace("/", "-")
+        deleted = False
 
         if file_path.exists():
             try:
                 file_path.unlink()
-                return {"deleted": True}
+                deleted = True
             except Exception:
                 pass
-        return {"deleted": False}
+
+        # Video: also delete associated thumbnail in image cache
+        # Video filename pattern: users-xxx-generated_video.mp4
+        # Thumb filename pattern: users-xxx-preview_image.jpg
+        # Common prefix: everything before "-generated_video" / "-generated-video"
+        if media_type == "video" and name:
+            stem = file_path.stem
+            for suffix in ("-generated_video_hd", "-generated_video", "-generated-video"):
+                if stem.endswith(suffix):
+                    stem = stem[: -len(suffix)]
+                    break
+            if stem:
+                for img_file in self.image_dir.glob(f"{stem}*"):
+                    if img_file.is_file():
+                        try:
+                            img_file.unlink()
+                        except Exception:
+                            pass
+
+        return {"deleted": deleted}
 
     def clear(self, media_type: str = "image") -> Dict[str, Any]:
         cache_dir = self._cache_dir(media_type)

@@ -17,7 +17,7 @@ BASE_DIR = DATA_DIR / "tmp"
 IMAGE_DIR = BASE_DIR / "image"
 VIDEO_DIR = BASE_DIR / "video"
 
-# 浏览器直接预览，不触发下载
+# Force inline display instead of triggering browser download
 _INLINE_HEADERS = {
     "Content-Disposition": "inline",
     "Cache-Control": "public, max-age=31536000, immutable",

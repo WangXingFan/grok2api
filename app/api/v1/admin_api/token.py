@@ -315,7 +315,12 @@ async def enable_nsfw(data: dict):
 
 @router.post("/tokens/nsfw/enable/async", dependencies=[Depends(verify_app_key)])
 async def enable_nsfw_async(data: dict):
-    """批量开启 NSFW (Unhinged) 模式（异步批量 + SSE 进度）"""
+    """批量开启 NSFW (Unhinged) 模式（异步批量 + SSE 进度）
+
+    支持参数:
+      - tokens: list[str] | null — 指定 token 列表，为空则自动收集全部
+      - skip_tagged: bool — 为 true 时自动跳过已有 nsfw 标签的 token
+    """
     mgr = await get_token_manager()
 
     tokens = []
@@ -334,6 +339,31 @@ async def enable_nsfw_async(data: dict):
         raise HTTPException(status_code=400, detail="No tokens available")
 
     unique_tokens = list(dict.fromkeys(tokens))
+
+    # skip_tagged: filter out tokens that already have the 'nsfw' tag
+    skip_tagged = bool(data.get("skip_tagged", False))
+    skipped_count = 0
+    if skip_tagged:
+        before = len(unique_tokens)
+        tagged_set = set()
+        for pool_name, pool in mgr.pools.items():
+            for info in pool.list():
+                if info.tags and "nsfw" in info.tags:
+                    raw = info.token[4:] if info.token.startswith("sso=") else info.token
+                    tagged_set.add(raw)
+        unique_tokens = [t for t in unique_tokens if t not in tagged_set]
+        skipped_count = before - len(unique_tokens)
+        if skipped_count > 0:
+            logger.info(
+                f"NSFW enable: skipped {skipped_count} already-tagged tokens"
+            )
+
+    if not unique_tokens:
+        return {
+            "status": "success",
+            "message": "All tokens already have NSFW enabled",
+            "skipped": skipped_count,
+        }
 
     task = create_task(len(unique_tokens))
 
@@ -375,6 +405,7 @@ async def enable_nsfw_async(data: dict):
                     "total": len(unique_tokens),
                     "ok": ok_count,
                     "fail": fail_count,
+                    "skipped": skipped_count,
                 },
                 "results": results,
             }

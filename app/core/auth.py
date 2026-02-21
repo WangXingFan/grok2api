@@ -1,19 +1,19 @@
 """
-API auth helpers.
+API 认证模块
 """
 
 from typing import Optional
+from fastapi import HTTPException, status, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from fastapi import HTTPException, Security, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from app.core.config import get_config, is_public_mode
+from app.core.config import get_config
 
 DEFAULT_API_KEY = ""
 DEFAULT_APP_KEY = "grok2api"
 DEFAULT_PUBLIC_KEY = ""
 DEFAULT_PUBLIC_ENABLED = False
 
+# 定义 Bearer Scheme
 security = HTTPBearer(
     auto_error=False,
     scheme_name="API Key",
@@ -22,16 +22,13 @@ security = HTTPBearer(
 
 
 def get_admin_api_key() -> str:
-    """Return effective API key for protected API routes."""
-    api_key = (get_config("app.api_key", DEFAULT_API_KEY) or "").strip()
-    if api_key:
-        return api_key
+    """
+    获取后台 API Key。
 
-    if is_public_mode():
-        return ""
-
-    app_key = (get_config("app.app_key", DEFAULT_APP_KEY) or "").strip()
-    return app_key
+    为空时表示不启用后台接口认证。
+    """
+    api_key = get_config("app.api_key", DEFAULT_API_KEY)
+    return api_key or ""
 
 def get_app_key() -> str:
     """
@@ -59,16 +56,14 @@ def is_public_enabled() -> bool:
 async def verify_api_key(
     auth: Optional[HTTPAuthorizationCredentials] = Security(security),
 ) -> Optional[str]:
-    """Validate Bearer token for API access."""
+    """
+    验证 Bearer Token
+
+    如果 config.toml 中未配置 api_key，则不启用认证。
+    """
     api_key = get_admin_api_key()
     if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Authentication key is not configured. Set app.api_key "
-                "or a non-default app.app_key."
-            ),
-        )
+        return None
 
     if not auth:
         raise HTTPException(
@@ -90,17 +85,10 @@ async def verify_api_key(
 async def verify_api_key_if_private(
     auth: Optional[HTTPAuthorizationCredentials] = Security(security),
 ) -> Optional[str]:
-    """Bypass auth in public mode, enforce auth in private mode."""
-    if is_public_mode():
-        return None
-    return await verify_api_key(auth)
-
-
-async def verify_playground_access(
-    auth: Optional[HTTPAuthorizationCredentials] = Security(security),
-) -> Optional[str]:
-    """Playground access follows site mode auth behavior."""
-    if is_public_mode():
+    """
+    公开模式直接放行，私有模式验证 api_key。
+    """
+    if is_public_enabled():
         return None
     return await verify_api_key(auth)
 
@@ -117,7 +105,7 @@ async def verify_app_key(
 
     if not app_key:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="App key is not configured",
             headers={"WWW-Authenticate": "Bearer"},
         )

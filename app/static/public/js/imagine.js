@@ -387,6 +387,29 @@
     document.body.removeChild(link);
   }
 
+  function downloadImageFromUrl(url, filename) {
+    fetch(url)
+      .then(r => r.blob())
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      })
+      .catch(() => {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.target = '_blank';
+        link.click();
+      });
+  }
+
   function appendImage(base64, meta) {
     if (!waterfall) return;
     if (autoFilterToggle && autoFilterToggle.checked) {
@@ -410,8 +433,14 @@
     img.loading = 'lazy';
     img.decoding = 'async';
     img.alt = meta && meta.sequence ? `image-${meta.sequence}` : 'image';
-    const mime = inferMime(base64);
-    const dataUrl = `data:${mime};base64,${base64}`;
+    const isUrl = base64.startsWith('http://') || base64.startsWith('https://');
+    let dataUrl;
+    if (isUrl) {
+      dataUrl = base64;
+    } else {
+      const mime = inferMime(base64);
+      dataUrl = `data:${mime};base64,${base64}`;
+    }
     img.src = dataUrl;
 
     const metaBar = document.createElement('div');
@@ -463,10 +492,12 @@
     if (autoDownloadToggle && autoDownloadToggle.checked) {
       const timestamp = Date.now();
       const seq = meta && meta.sequence ? meta.sequence : 'unknown';
-      const ext = mime === 'image/png' ? 'png' : 'jpg';
+      const ext = isUrl ? (base64.match(/\.(png|jpg|jpeg|webp|gif)/i)?.[1] || 'jpg') : (inferMime(base64) === 'image/png' ? 'png' : 'jpg');
       const filename = `imagine_${timestamp}_${seq}.${ext}`;
-      
-      if (useFileSystemAPI && directoryHandle) {
+
+      if (isUrl) {
+        downloadImageFromUrl(base64, filename);
+      } else if (useFileSystemAPI && directoryHandle) {
         saveToFileSystem(base64, filename).catch(() => {
           downloadImage(base64, filename);
         });
@@ -907,6 +938,28 @@
     setStatus('', '未连接');
   }
 
+  // === Edit Mode: get api_key for /v1/images/edits ===
+  let cachedEditApiKey = undefined; // undefined=not fetched, null=failed, string=key
+
+  async function getEditApiKey() {
+    if (cachedEditApiKey !== undefined) return cachedEditApiKey;
+    const adminKey = await ensureAdminKey();
+    if (adminKey === null) return null;
+    try {
+      const res = await fetch('/v1/admin/config', {
+        headers: buildAuthHeaders(adminKey)
+      });
+      if (!res.ok) throw new Error('Failed to fetch config');
+      const cfg = await res.json();
+      const apiKey = (cfg.app && cfg.app.api_key) || '';
+      cachedEditApiKey = apiKey || '';
+      return cachedEditApiKey;
+    } catch (e) {
+      console.warn('getEditApiKey failed:', e);
+      return null;
+    }
+  }
+
   // === Edit Mode: call /v1/images/edits ===
   async function startEditMode() {
     const prompt = promptInput ? promptInput.value.trim() : '';
@@ -919,14 +972,14 @@
       return;
     }
 
-    const apiKey = await ensureApiKey();
+    const apiKey = await getEditApiKey();
     if (apiKey === null) {
       toast('请先登录后台', 'error');
       return;
     }
 
     if (isRunning) {
-      toast('已在运行中', 'warning');
+      toast('任务进行中', 'warning');
       return;
     }
 
@@ -943,9 +996,10 @@
     formData.append('response_format', 'b64_json');
 
     try {
+      const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
       const res = await fetch('/v1/images/edits', {
         method: 'POST',
-        headers: buildAuthHeaders(apiKey),
+        headers,
         body: formData,
       });
 
@@ -958,7 +1012,7 @@
       const elapsed = Date.now() - startTime;
 
       if (data.data && data.data.length > 0) {
-        data.data.forEach((item, idx) => {
+        data.data.forEach((item) => {
           const b64 = item.b64_json;
           if (b64) {
             imageCount += 1;

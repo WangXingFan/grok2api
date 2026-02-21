@@ -480,7 +480,7 @@ class TokenManager:
             usage_service = UsageService()
             result = await usage_service.get(token_str)
 
-            if result and "remainingTokens" in result:
+            if result and ("remainingTokens" in result or "remainingQueries" in result):
                 new_quota = result.get("remainingTokens")
                 if new_quota is None:
                     new_quota = result.get("remainingQueries")
@@ -825,7 +825,7 @@ class TokenManager:
                     try:
                         result = await usage_service.get(token_str)
 
-                        if result and "remainingTokens" in result:
+                        if result and ("remainingTokens" in result or "remainingQueries" in result):
                             new_quota = result.get("remainingTokens")
                             if new_quota is None:
                                 new_quota = result.get("remainingQueries")

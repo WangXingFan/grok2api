@@ -562,11 +562,9 @@ class SQLStorage(BaseStorage):
 
         self.dialect = url.split(":", 1)[0].split("+", 1)[0].lower()
 
-        # PostgreSQL (asyncpg) 专用连接参数
+        # PostgreSQL (asyncpg): Neon/Supabase pooler (PgBouncer) 不支持 prepared statements
         connect_args = {}
         if self.dialect in ("postgres", "postgresql", "pgsql"):
-            # Neon/Supabase pooler (PgBouncer) 不支持 prepared statements
-            # asyncpg 默认启用 statement cache，必须关掉否则直接断连
             connect_args["statement_cache_size"] = 0
             logger.info("SQLStorage: PostgreSQL 模式，已禁用 statement cache (兼容 PgBouncer)")
 
@@ -574,11 +572,11 @@ class SQLStorage(BaseStorage):
         self.engine = create_async_engine(
             url,
             echo=False,
-            pool_size=5,           # Serverless 不需要太多常驻连接
-            max_overflow=3,        # 突发最多 8 个连接
-            pool_recycle=300,      # 5分钟回收，适配 Serverless 冷启动
-            pool_pre_ping=True,    # 每次使用前 ping 一下，防止用到断掉的连接
-            pool_timeout=10,       # 获取连接超时 10 秒
+            pool_size=5,
+            max_overflow=3,
+            pool_recycle=300,
+            pool_pre_ping=True,
+            pool_timeout=10,
             connect_args=connect_args,
         )
         self.async_session = async_sessionmaker(self.engine, expire_on_commit=False)
@@ -906,18 +904,6 @@ class SQLStorage(BaseStorage):
                         pass
         else:
             yield
-
-    async def verify_connection(self) -> bool:
-        """验证数据库连接是否正常"""
-        try:
-            from sqlalchemy import text
-
-            async with self.engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-            return True
-        except Exception as e:
-            logger.error(f"SQLStorage: 数据库连接验证失败: {e}")
-            return False
 
     async def load_config(self) -> Dict[str, Any]:
         await self._ensure_schema()
@@ -1284,6 +1270,18 @@ class SQLStorage(BaseStorage):
         except Exception as e:
             logger.error(f"SQLStorage: 增量保存 Token 失败: {e}")
             raise
+
+    async def verify_connection(self) -> bool:
+        """验证数据库连接是否正常"""
+        try:
+            from sqlalchemy import text
+
+            async with self.engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            return True
+        except Exception as e:
+            logger.error(f"SQLStorage: 数据库连接验证失败: {e}")
+            return False
 
     async def close(self):
         await self.engine.dispose()

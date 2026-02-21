@@ -302,3 +302,56 @@
   box-shadow: 0 0 0 2px #000;
   border-color: #000;
 }
+
+/* Video Preview Dialog */
+#video-preview-dialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+}
+
+#video-preview-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.video-preview-wrapper {
+  position: relative;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.video-preview-wrapper video {
+  display: block;
+  max-width: 85vw;
+  max-height: 80vh;
+  width: auto;
+  height: auto;
+}
+
+.video-preview-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.video-preview-close:hover {
+  background: rgba(0, 0, 0, 0.8);
+}

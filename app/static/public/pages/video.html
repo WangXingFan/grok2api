@@ -18,143 +18,329 @@
   <div id="toast-container" class="toast-container"></div>
   <div id="app-header"></div>
 
-  <main class="flex-1 container mx-auto max-w-5xl px-6 py-8 fade-in">
+  <main class="space-y-6 flex-1 container mx-auto max-w-5xl px-6 py-8 fade-in">
     <div class="space-y-6">
-      <div class="video-header-row">
+      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 class="text-2xl font-semibold tracking-tight">Video 视频生成</h2>
-          <p class="text-[var(--accents-4)] mt-1 text-sm">生成短视频，支持参考图与多种预设风格。</p>
+          <p class="text-[var(--accents-4)] mt-1 text-sm">通过 Grok 生成短视频，支持多种宽高比、时长和风格预设。</p>
         </div>
-        <div class="video-actions">
-          <button id="startBtn" class="geist-button gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            开始生成
-          </button>
-          <button id="stopBtn" class="geist-button-outline gap-2 hidden">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <rect x="5" y="5" width="14" height="14" />
-            </svg>
-            停止
-          </button>
-        </div>
-      </div>
-
-      <div class="h-px bg-[var(--border)]"></div>
-
-      <div class="video-top-grid">
-        <div class="video-card">
-          <div class="card-title">生成设置</div>
-          <div class="settings-grid">
-            <div class="settings-block prompt-block">
-              <label class="field-label" for="promptInput">提示词</label>
-              <textarea id="promptInput" class="geist-input video-textarea" placeholder="例如：街头霓虹雨夜，慢镜头，胶片质感"></textarea>
-            </div>
-            <div class="settings-block ref-block">
-              <label class="field-label" for="imageUrlInput">参考图</label>
-              <div class="ref-controls">
-                <input id="imageUrlInput" class="geist-input" placeholder="https://... 或 data:image/...">
-              </div>
-              <div class="ref-meta">
-                <span id="imageFileName" class="ref-name">未选择文件</span>
-              </div>
-            </div>
-            <div class="settings-block ratio-block">
-              <label class="field-label" for="ratioSelect">画面比例</label>
-              <select id="ratioSelect" class="geist-input">
-                <option value="3:2" selected>3:2 横构图</option>
-                <option value="2:3">2:3 竖构图</option>
-                <option value="16:9">16:9 宽屏</option>
-                <option value="9:16">9:16 竖屏</option>
-                <option value="1:1">1:1 方形</option>
-              </select>
-            </div>
-            <div class="settings-block length-block">
-              <label class="field-label" for="lengthSelect">视频时长</label>
-              <select id="lengthSelect" class="geist-input">
-                <option value="6" selected>6 秒</option>
-                <option value="10">10 秒</option>
-                <option value="15">15 秒</option>
-              </select>
-            </div>
-            <div class="settings-block resolution-block">
-              <label class="field-label" for="resolutionSelect">分辨率</label>
-              <select id="resolutionSelect" class="geist-input">
-                <option value="480p" selected>480p</option>
-                <option value="720p">720p</option>
-              </select>
-            </div>
-            <div class="settings-block preset-block">
-              <label class="field-label" for="presetSelect">风格预设</label>
-              <select id="presetSelect" class="geist-input">
-                <option value="normal" selected>Normal</option>
-                <option value="fun">Fun</option>
-                <option value="spicy">Spicy</option>
-                <option value="custom">Custom</option>
-              </select>
-            </div>
-            <div class="settings-block upload-block">
-              <label class="field-label">&nbsp;</label>
-              <button id="selectImageFileBtn" class="geist-button-outline text-xs px-3" type="button">上传</button>
-              <input id="imageFileInput" class="ref-file-input" type="file" accept="image/*">
-            </div>
-            <div class="settings-block clear-block">
-              <label class="field-label">&nbsp;</label>
-              <button id="clearImageFileBtn" class="geist-button-outline text-xs px-3" type="button">清除</button>
-            </div>
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="video-mode-toggle">
+            <button class="video-mode-btn active" data-mode="single">单视频</button>
+            <button class="video-mode-btn" data-mode="waterfall">瀑布流</button>
           </div>
-        </div>
-
-        <div class="video-card">
-          <div class="status-header">
-            <div class="card-title">运行状态</div>
-            <span id="statusText" class="status-text">未连接</span>
-          </div>
-            <div class="progress-wrap">
-              <div id="progressBar" class="progress-bar">
-                <div id="progressFill" class="progress-fill"></div>
-              </div>
-              <div class="progress-meta">
-                <span id="progressText">0%</span>
-                <span id="durationValue">耗时 -</span>
-            </div>
-          </div>
-          <div class="meta-grid">
-            <div class="meta-item">
-              <div class="meta-label">比例</div>
-              <div id="aspectValue" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-              <div class="meta-label">时长</div>
-              <div id="lengthValue" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-              <div class="meta-label">分辨率</div>
-              <div id="resolutionValue" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-              <div class="meta-label">预设</div>
-              <div id="presetValue" class="meta-value">-</div>
-            </div>
+          <div class="video-actions">
+            <button id="generateBtn" class="geist-button gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              生成视频
+            </button>
+            <button id="stopBtn" class="geist-button-outline gap-2 hidden">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="5" y="5" width="14" height="14" />
+              </svg>
+              停止生成
+            </button>
           </div>
         </div>
       </div>
 
-      <div class="video-card video-preview-card">
-        <div class="video-preview-header">
-          <div class="card-title">视频预览</div>
-          <div class="preview-actions">
-            <button id="clearBtn" class="geist-button-outline text-xs px-3">清空</button>
+      <div class="h-px bg-[var(--border)] my-6"></div>
+
+      <div class="video-grid" id="videoGrid">
+        <section class="video-primary" id="videoPrimary">
+          <!-- 单视频模式：生成设置卡片 -->
+          <div class="video-card" id="singleSettings">
+            <div class="card-title">生成设置</div>
+            <div class="video-settings">
+              <div>
+                <label class="field-label" for="promptInput">提示词</label>
+                <textarea id="promptInput" class="geist-input video-textarea"
+                  placeholder="描述你想要的视频画面，例如：一只猫在草地上奔跑，阳光明媚"></textarea>
+              </div>
+              <div>
+                <label class="field-label">参考图片 <span style="font-weight:400;color:var(--accents-4);">（可选，上传后将基于图片生成视频）</span></label>
+                <div id="imageUploadArea" class="video-upload-area">
+                  <input type="file" id="imageFileInput" accept="image/*" style="display:none;">
+                  <div id="imageUploadPlaceholder" class="video-upload-placeholder">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accents-3);">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                      <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    <span>点击或拖拽上传图片</span>
+                  </div>
+                  <div id="imagePreviewContainer" class="video-upload-preview hidden">
+                    <img id="imagePreview" alt="preview">
+                    <button id="imageRemoveBtn" class="video-upload-remove" title="移除图片">&times;</button>
+                  </div>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="field-label" for="ratioSelect">宽高比</label>
+                  <select id="ratioSelect" class="geist-input">
+                    <option value="3:2" selected>3:2 横向</option>
+                    <option value="16:9">16:9 宽屏</option>
+                    <option value="1:1">1:1 方形</option>
+                    <option value="2:3">2:3 竖向</option>
+                    <option value="9:16">9:16 竖屏</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="lengthSelect">视频时长</label>
+                  <select id="lengthSelect" class="geist-input">
+                    <option value="6" selected>6 秒</option>
+                    <option value="10">10 秒</option>
+                    <option value="15">15 秒</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="resolutionSelect">分辨率</label>
+                  <select id="resolutionSelect" class="geist-input">
+                    <option value="480p" selected>480p</option>
+                    <option value="720p">720p</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="presetSelect">风格预设</label>
+                  <select id="presetSelect" class="geist-input">
+                    <option value="custom" selected>Custom 自定义</option>
+                    <option value="normal">Normal 普通</option>
+                    <option value="fun">Fun 趣味</option>
+                    <option value="spicy">Spicy 辛辣</option>
+                  </select>
+                </div>
+              </div>
+              <div class="video-toggle-row">
+                <div class="video-toggle-item">
+                  <label class="field-label" for="streamToggle">流式输出</label>
+                  <label class="toggle">
+                    <input id="streamToggle" type="checkbox" checked>
+                    <span class="toggle-track"></span>
+                    <span class="toggle-label">实时获取生成进度</span>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div id="videoEmpty" class="video-empty">等待生成视频</div>
-        <div id="videoStage" class="video-stage hidden"></div>
+
+          <!-- 单视频模式：视频预览卡片 -->
+          <div class="video-card" id="singlePreview">
+            <div class="card-title">视频预览</div>
+            <div id="videoEmpty" class="video-empty">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
+                stroke-linecap="round" stroke-linejoin="round" style="color: var(--accents-3); margin-bottom: 12px;">
+                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                <line x1="7" y1="2" x2="7" y2="22"></line>
+                <line x1="17" y1="2" x2="17" y2="22"></line>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <line x1="2" y1="7" x2="7" y2="7"></line>
+                <line x1="2" y1="17" x2="7" y2="17"></line>
+                <line x1="17" y1="17" x2="22" y2="17"></line>
+                <line x1="17" y1="7" x2="22" y2="7"></line>
+              </svg>
+              <div>输入提示词并点击"生成视频"开始</div>
+            </div>
+            <div id="videoProgress" class="video-progress hidden">
+              <div class="video-progress-bar">
+                <div id="progressFill" class="video-progress-fill"></div>
+              </div>
+              <div id="progressText" class="video-progress-text">准备中...</div>
+            </div>
+            <div id="videoPlayer" class="video-player-wrapper hidden">
+              <video id="videoElement" controls playsinline></video>
+            </div>
+            <div id="videoHtmlContainer" class="video-html-container hidden"></div>
+            <div id="videoMeta" class="video-meta hidden">
+              <span id="metaPrompt" class="video-meta-prompt"></span>
+              <span id="metaElapsed" class="font-mono"></span>
+            </div>
+          </div>
+
+          <!-- 瀑布流模式：设置栏 + 网格 (默认隐藏) -->
+          <div id="wfSection" class="hidden">
+            <div class="waterfall-settings">
+              <div class="field-group">
+                <label>提示词</label>
+                <textarea id="wfPromptInput" class="geist-input" rows="1"
+                  style="min-height:28px;resize:none;width:260px;font-size:11px;"
+                  placeholder="描述你想要的视频画面"></textarea>
+              </div>
+              <div class="field-group">
+                <label>比例</label>
+                <select id="wfRatio" class="geist-input">
+                  <option value="3:2">3:2</option>
+                  <option value="16:9">16:9</option>
+                  <option value="1:1">1:1</option>
+                  <option value="2:3">2:3</option>
+                  <option value="9:16">9:16</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label>时长</label>
+                <select id="wfLength" class="geist-input">
+                  <option value="6">6s</option>
+                  <option value="10">10s</option>
+                  <option value="15">15s</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label>分辨率</label>
+                <select id="wfResolution" class="geist-input">
+                  <option value="480p">480p</option>
+                  <option value="720p">720p</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label>并发</label>
+                <select id="wfConcurrent" class="geist-input">
+                  <option value="1" selected>1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label class="toggle" style="margin:0;">
+                  <input id="wfAutoScroll" type="checkbox" checked>
+                  <span class="toggle-track"></span>
+                  <span class="toggle-label" style="font-size:11px;">自动滚动</span>
+                </label>
+              </div>
+              <div class="field-group">
+                <label class="toggle" style="margin:0;">
+                  <input id="wfAutoDownload" type="checkbox">
+                  <span class="toggle-track"></span>
+                  <span class="toggle-label" style="font-size:11px;">自动下载</span>
+                </label>
+              </div>
+            </div>
+            <div class="wf-image-upload-row">
+              <div id="wfImageUploadArea" class="wf-image-upload-area">
+                <input type="file" id="wfImageFileInput" accept="image/*" style="display:none;">
+                <div id="wfImagePlaceholder" class="wf-image-placeholder">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accents-3);flex-shrink:0;">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                  <span>参考图片（可选，点击或拖拽上传）</span>
+                </div>
+                <div id="wfImagePreviewContainer" class="wf-image-preview hidden">
+                  <img id="wfImagePreview" alt="preview">
+                  <span id="wfImageName" class="wf-image-name"></span>
+                  <button id="wfImageRemoveBtn" class="wf-image-remove" title="移除图片">&times;</button>
+                </div>
+              </div>
+            </div>
+            <div id="wfGrid" class="video-waterfall">
+              <div class="wf-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
+                  stroke-linecap="round" stroke-linejoin="round" style="color:var(--accents-3);margin-bottom:8px;">
+                  <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                  <line x1="7" y1="2" x2="7" y2="22"></line>
+                  <line x1="17" y1="2" x2="17" y2="22"></line>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                </svg>
+                <div>输入提示词并点击"生成视频"开始批量生成</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="video-side" id="videoSide">
+          <!-- 生成状态卡片 -->
+          <div class="video-card">
+            <div class="video-status-header">
+              <div class="card-title">生成状态</div>
+              <span id="statusText" class="status-text">就绪</span>
+            </div>
+            <div class="video-params-grid">
+              <div class="video-param-tag">
+                <span class="video-param-label">模型</span>
+                <span class="video-param-value">video</span>
+              </div>
+              <div class="video-param-tag">
+                <span class="video-param-label">宽高比</span>
+                <span id="statusRatio" class="video-param-value">3:2</span>
+              </div>
+              <div class="video-param-tag">
+                <span class="video-param-label">时长</span>
+                <span id="statusLength" class="video-param-value">6s</span>
+              </div>
+              <div class="video-param-tag">
+                <span class="video-param-label">分辨率</span>
+                <span id="statusResolution" class="video-param-value">480p</span>
+              </div>
+              <div class="video-param-tag">
+                <span class="video-param-label">预设</span>
+                <span id="statusPreset" class="video-param-value">custom</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 生成历史卡片 -->
+          <div class="video-card">
+            <div class="video-history-header">
+              <div class="card-title">生成历史</div>
+              <button id="clearHistoryBtn" class="geist-button-outline text-xs px-3">清空</button>
+            </div>
+            <div id="historyEmpty" class="video-hint">暂无生成记录</div>
+            <div id="historyList" class="video-history-list"></div>
+          </div>
+        </aside>
       </div>
     </div>
   </main>
+
+  <!-- 瀑布流 Lightbox -->
+  <div id="wfLightbox" class="video-lightbox">
+    <button class="lightbox-close" id="lightboxClose">&times;</button>
+    <button class="lightbox-nav lightbox-prev" id="lightboxPrev">&#8249;</button>
+    <video id="lightboxVideo" controls playsinline></video>
+    <button class="lightbox-nav lightbox-next" id="lightboxNext">&#8250;</button>
+    <div class="lightbox-counter" id="lightboxCounter"></div>
+  </div>
+
+  <!-- 瀑布流浮动工具栏 -->
+  <div id="wfFloatingBar" class="video-floating-bar hidden">
+    <button id="wfStartBtn" class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="5 3 19 12 5 21 5 3" />
+      </svg>
+      开始
+    </button>
+    <button id="wfStopBtn" class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100 hidden">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="5" y="5" width="14" height="14" />
+      </svg>
+      停止
+    </button>
+    <span class="float-sep"></span>
+    <button id="wfClearBtn" class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-red-100">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+      清空
+    </button>
+    <span class="float-sep"></span>
+    <button id="floatSelectAll" class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 11 12 14 22 4"></polyline>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+      </svg>
+      批量
+    </button>
+    <div id="selectionToolbar" class="hidden" style="display:inline-flex;align-items:center;gap:6px;">
+      <button id="floatDeselectAll" class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100">取消</button>
+      <button id="floatDownload" class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100">下载 <span id="floatCounter" class="float-counter">0</span></button>
+      <button id="floatDelete" class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-red-100">删除</button>
+    </div>
+  </div>
 
   <div id="app-footer"></div>
 
