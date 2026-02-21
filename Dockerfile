@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.13-alpine AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,9 +9,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 确保 uv 的 bin 目录
 ENV PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH"
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends tzdata ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    tzdata \
+    ca-certificates \
+    build-base \
+    linux-headers \
+    libffi-dev \
+    openssl-dev \
+    curl-dev \
+    cargo \
+    rust
 
 WORKDIR /app
 
@@ -20,14 +27,43 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project \
+    && find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + \
+    && find /opt/venv -type f -name "*.pyc" -delete \
+    && find /opt/venv -type d -name "tests" -prune -exec rm -rf {} + \
+    && find /opt/venv -type d -name "test" -prune -exec rm -rf {} + \
+    && find /opt/venv -type d -name "testing" -prune -exec rm -rf {} + \
+    && find /opt/venv -type f -name "*.so" -exec strip --strip-unneeded {} + || true \
+    && rm -rf /root/.cache /tmp/uv-cache
+
+FROM python:3.13-alpine
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TZ=Asia/Shanghai \
+    VIRTUAL_ENV=/opt/venv
+
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+RUN apk add --no-cache \
+    tzdata \
+    ca-certificates \
+    libffi \
+    openssl \
+    libgcc \
+    libstdc++ \
+    libcurl
+
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
 
 COPY config.defaults.toml ./
 COPY app ./app
 COPY main.py ./
 COPY scripts ./scripts
 
-RUN mkdir -p /app/data /app/data/tmp /app/logs \
+RUN mkdir -p /app/data /app/logs \
     && chmod +x /app/scripts/entrypoint.sh
 
 EXPOSE 8000

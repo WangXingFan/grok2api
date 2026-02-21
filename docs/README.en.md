@@ -1,168 +1,125 @@
 # Grok2API (Fork)
 
-[中文](../README.md) | **English**
+[中文](../readme.md) | **English**
 
 > [!NOTE]
-> This project is a fork of [chenyme/grok2api](https://github.com/chenyme/grok2api), with multiple enhanced features added to the admin dashboard.
->
-> This project is for learning and research only. You must comply with Grok's Terms of Use and applicable laws. Do not use it for illegal purposes.
+> This project is for learning and research only. You must comply with Grok **Terms of Use** and **local laws and regulations**. Do not use for illegal purposes.
 
-Grok2API rebuilt with **FastAPI**, fully aligned with the latest web call format. Supports streaming and non-streaming chat, image generation/editing, video generation, deep thinking, token pool concurrency, and automatic load balancing.
+> [!NOTE]
+> Open source projects welcome everyone's support for secondary development and pull requests, but please retain the original author's and frontend's logos to respect the work of others!
 
-<br>
+Grok2API rebuilt with **FastAPI**, fully aligned with the latest web call format. Supports streaming/non-streaming chat, image generation/editing, video generation/upscale (text-to-video and image-to-video), deep reasoning, token pool concurrency, and automatic load balancing.
 
-## New Features (Fork)
-
-### Imagine Image Generation / Editing
-
-A new **Image Editing** mode has been added to the **Imagine** page (`/admin/imagine`) under the "Features" menu in the admin dashboard.
-
-| Mode | Description |
-| :--- | :--- |
-| **Generate Mode** | Generate images from scratch using prompts (original feature) |
-| **Edit Mode** | Upload a reference image + prompt for AI-based image editing |
-
-**Edit Mode Features**:
-
-- One-click toggle between Generate / Edit mode
-- Drag-and-drop or click to upload a reference image (max 50MB)
-- Image preview and removal
-- Calls `/v1/images/edits` endpoint, model `grok-imagine-1.0-edit`
-<img width="518" height="790" alt="image" src="https://github.com/user-attachments/assets/7e1b975c-4c73-454b-91e4-4c5ce2e940fb" />
-
----
-
-### Video Generation Page
-
-The **Video Generation** page (`/admin/video`) under the "Features" menu provides a visual interface for video generation.
-
-**Dual Mode Support**:
-
-| Mode | Description |
-| :--- | :--- |
-| **Single Video Mode** | Generate one video at a time, ideal for fine-tuning parameters and preview |
-| **Waterfall Mode** | Batch continuous generation with concurrency control (1-3 concurrent), auto-scroll, auto-download |
-
-**Features**:
-
-- Prompt input with `Ctrl+Enter` shortcut
-- **Image-to-Video**: Upload a reference image to generate video based on image content (both Single and Waterfall modes supported)
-- Adjustable parameters:
-  - Aspect ratio: `16:9` / `9:16` / `1:1` / `2:3` / `3:2`
-  - Video length: `6s` / `10s` / `15s`
-  - Resolution: `480p` / `720p`
-  - Style preset: `Custom` / `Normal` / `Fun` / `Spicy`
-- Stream / non-stream output toggle
-- Real-time generation status with parameter sync
-- Video player preview (supports both URL and HTML response formats)
-- Generation history (local storage, click to replay, per-item deletion)
-- **Waterfall Mode Exclusive**:
-  - Concurrency control (1/2/3 concurrent generations)
-  - Auto-scroll to latest video
-  - Auto-download completed videos
-  - Batch select, download, and delete
-  - Lightbox preview (keyboard left/right navigation)
-  - Graceful stop: waits for in-progress videos to finish instead of interrupting
-<img width="819" height="859" alt="image" src="https://github.com/user-attachments/assets/4b88bf6b-9cd2-44e4-bed9-be77c173dd41" />
-<img width="890" height="845" alt="image" src="https://github.com/user-attachments/assets/e30d79be-dc7e-466d-b7a8-6c13f667f19b" />
-
----
-
-### Token Management Enhancement
-
-- New **"Refresh All"** button: one-click refresh of all Token statuses without manual selection
-
----
-
-### Cache Management Enhancement
-
-- New **Batch Download**: select multiple local image/video files and click the "Download" button to get a single ZIP archive (`ZIP_STORED`, no compression overhead); selecting only 1 file downloads it directly without zipping
-- New **Single File Download**: a download icon has been added to each file row for quick single-file download
-- New **Inline Media Preview**: opening a file link in the browser now plays videos or displays images directly instead of triggering a download
+<img width="4800" height="4200" alt="image" src="https://github.com/user-attachments/assets/a6669674-8afe-4ae5-bf81-a2ec1f864233" />
 
 <br>
 
-## Deployment
+## Quick Start
+
+### Local
+
+```bash
+uv sync
+uv run main.py
+```
 
 ### Docker Compose
 
 ```bash
-git clone https://github.com/WangXingFan/grok2api.git
-
+git clone https://github.com/chenyme/grok2api
 cd grok2api
 
 docker compose up -d
 ```
 
-> To update the image:
-> ```bash
-> docker compose pull && docker compose up -d
-> ```
->
-> To build from source instead:
-> ```bash
-> docker compose up -d --build
-> ```
-
 ### Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/WangXingFan/grok2api)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/chenyme/grok2api&env=LOG_LEVEL,LOG_FILE_ENABLED,DATA_DIR,SERVER_STORAGE_TYPE,SERVER_STORAGE_URL&envDefaults=%7B%22DATA_DIR%22%3A%22/tmp/data%22%2C%22LOG_FILE_ENABLED%22%3A%22false%22%2C%22LOG_LEVEL%22%3A%22INFO%22%2C%22SERVER_STORAGE_TYPE%22%3A%22local%22%2C%22SERVER_STORAGE_URL%22%3A%22%22%7D)
 
-> You must set `DATA_DIR=/tmp/data` and disable file logging `LOG_FILE_ENABLED=false`.
+> Set `DATA_DIR=/tmp/data` and disable file logs with `LOG_FILE_ENABLED=false`.
 >
-> For persistence, use MySQL / Redis / PostgreSQL by setting `SERVER_STORAGE_TYPE` (mysql/redis/pgsql) and `SERVER_STORAGE_URL` in Vercel environment variables.
+> For persistence, use MySQL / Redis / PostgreSQL and set `SERVER_STORAGE_TYPE` and `SERVER_STORAGE_URL`.
 
 ### Render
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/WangXingFan/grok2api)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/WangXingFan/grok2api)
 
-> Render free instances sleep after 15 minutes of inactivity. Data will be lost on restart/redeploy.
+> Render free instances sleep after 15 minutes of inactivity; redeploy/restart will lose data.
 >
-> For persistence, use MySQL / Redis / PostgreSQL by setting `SERVER_STORAGE_TYPE` (mysql/redis/pgsql) and `SERVER_STORAGE_URL` in Render environment variables.
+> For persistence, use MySQL / Redis / PostgreSQL and set `SERVER_STORAGE_TYPE` and `SERVER_STORAGE_URL`.
 
-### Environment Variables
+<br>
 
-Configure in the `environment` section of `docker-compose.yml`:
+## Admin Panel
 
-| Variable | Description | Default | Example |
-| :--- | :--- | :--- | :--- |
+- Access: `http://<host>:8000/admin`
+- Default password: `grok2api` (config `app.app_key`, recommended to change)
+
+**Features**:
+
+- **Token Management**: import/add/delete tokens, view status and quota
+- **Status Filter**: filter by status (active/limited/expired) or NSFW status
+- **Batch Ops**: batch refresh/export/delete/enable NSFW
+- **NSFW Enable**: one-click Unhinged for tokens (proxy or `cf_clearance` required)
+- **Config Management**: update system config online
+- **Cache Management**: view and clear media cache
+
+<br>
+
+## Environment Variables
+
+> Configure `.env`
+
+| Name | Description | Default | Example |
+| :-- | :-- | :-- | :-- |
 | `LOG_LEVEL` | Log level | `INFO` | `DEBUG` |
 | `LOG_FILE_ENABLED` | Enable file logging | `true` | `false` |
-| `DATA_DIR` | Data directory (config/tokens/locks) | `./data` | `/data` |
+| `DATA_DIR` | Data dir (config/tokens/locks) | `./data` | `/data` |
 | `SERVER_HOST` | Bind address | `0.0.0.0` | `0.0.0.0` |
-| `SERVER_PORT` | Service port | `8000` | `8000` |
+| `SERVER_PORT` | Server port | `8000` | `8000` |
 | `SERVER_WORKERS` | Uvicorn worker count | `1` | `2` |
 | `SERVER_STORAGE_TYPE` | Storage type (`local`/`redis`/`mysql`/`pgsql`) | `local` | `pgsql` |
-| `SERVER_STORAGE_URL` | Storage URL (empty for local) | `""` | `postgresql+asyncpg://user:password@host:5432/db` |
-| `SITE_MODE` | Site mode (`private`/`public`) | `private` | `public` |
+| `SERVER_STORAGE_URL` | Storage DSN (optional for local) | `""` | `postgresql+asyncpg://user:password@host:5432/db` |
 
-> MySQL example: `mysql+aiomysql://user:password@host:3306/db` (if you set `mysql://`, it will be normalized to `mysql+aiomysql://`)
+> MySQL example: `mysql+aiomysql://user:password@host:3306/db` (if you provide `mysql://`, it will be converted to `mysql+aiomysql://`).
 
-### Admin Panel
+<br>
+
+## Quotas
 
 URL: `http://<host>:8000/admin`
 Login password comes from `app.app_key` (required, set your own strong value).
 If the legacy default `grok2api` is still used, login is rejected (set `ALLOW_INSECURE_DEFAULT_APP_KEY=true` only for temporary backward compatibility).
 
-**Features**:
+<br>
 
-- **Token Management**: Import/add/delete tokens, view status and quota
-- **Status Filtering**: Filter by status (active/rate-limited/invalid) or NSFW status
-- **Batch Operations**: Batch refresh, export, delete, enable NSFW
-- **Config Management**: Modify system configuration online
-- **Cache Management**: View, clean, and download media cache (supports batch download of images/videos)
-- **Imagine Generation/Editing**: WebSocket/SSE real-time image generation + image editing mode (fork enhancement)
-- **Video Generation**: Visual video generation with image-to-video support (new in fork)
-- **Voice Live**: LiveKit voice session
+## Models
+
+| Model | Cost | Account | Chat | Image | Video |
+| :-- | :--: | :-- | :--: | :--: | :--: |
+| `grok-3` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-3-mini` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-3-thinking` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-4` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-4-mini` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-4-thinking` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-4-heavy` | 4 | Super | Yes | Yes | - |
+| `grok-4.1-mini` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-4.1-fast` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-4.1-expert` | 4 | Basic/Super | Yes | Yes | - |
+| `grok-4.1-thinking` | 4 | Basic/Super | Yes | Yes | - |
+| `grok-4.20-beta` | 1 | Basic/Super | Yes | Yes | - |
+| `grok-imagine-1.0` | - | Basic/Super | - | Yes | - |
+| `grok-imagine-1.0-edit` | - | Basic/Super | - | Yes | - |
+| `grok-imagine-1.0-video` | - | Basic/Super | - | - | Yes |
 
 #### Public / Private Site Mode
 
 Control deployment mode via the `SITE_MODE` environment variable:
 
-| Mode | Playground Pages | Admin Panel | API Endpoints |
-| :--- | :--------------- | :---------- | :------------ |
-| `private` (default) | Login required | Login required | API Key required |
-| `public` | Open access | Login required | No API Key needed |
+### `POST /v1/chat/completions`
+
+> Generic endpoint: chat, image generation, image editing, video generation, video upscaling
 
 - **`private`** (default): All pages and APIs require authentication, same behavior as before
 - **`public`**: Playground pages (`/imagine`, `/video`, `/voice`) are accessible without login; admin panel (`/admin`) still requires authentication
@@ -175,6 +132,212 @@ environment:
 
 <br>
 
-## Credits
+| Field | Type | Description | Allowed values |
+| :-- | :-- | :-- | :-- |
+| `model` | string | Model ID | See model list above |
+| `messages` | array | Message list | See message format below |
+| `stream` | boolean | Enable streaming | `true`, `false` |
+| `reasoning_effort` | string | Reasoning effort | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` |
+| `temperature` | number | Sampling temperature | `0` ~ `2` |
+| `top_p` | number | Nucleus sampling | `0` ~ `1` |
+| `video_config` | object | **Video model only** | Supported: `grok-imagine-1.0-video` |
+| └─ `aspect_ratio` | string | Video aspect ratio | `16:9`, `9:16`, `1:1`, `2:3`, `3:2`, `1280x720`, `720x1280`, `1792x1024`, `1024x1792`, `1024x1024` |
+| └─ `video_length` | integer | Video length (seconds) | `6`, `10`, `15` |
+| └─ `resolution_name` | string | Resolution | `480p`, `720p` |
+| └─ `preset` | string | Style preset | `fun`, `normal`, `spicy`, `custom` |
+| `image_config` | object | **Image models only** | Supported: `grok-imagine-1.0` / `grok-imagine-1.0-edit` |
+| └─ `n` | integer | Number of images | `1` ~ `10` |
+| └─ `size` | string | Image size | `1280x720`, `720x1280`, `1792x1024`, `1024x1792`, `1024x1024` |
+| └─ `response_format` | string | Response format | `url`, `b64_json`, `base64` |
 
-- Original project: [chenyme/grok2api](https://github.com/chenyme/grok2api) - Thanks to [@chenyme](https://github.com/chenyme) for the excellent work
+**Message format (messages)**:
+
+| Field | Type | Description |
+| :-- | :-- | :-- |
+| `role` | string | `developer`, `system`, `user`, `assistant` |
+| `content` | string/array | Plain text or multimodal array |
+
+**Multimodal content block types (content array)**:
+
+| type | Description | Example |
+| :-- | :-- | :-- |
+| `text` | Text | `{"type": "text", "text": "Describe this image"}` |
+| `image_url` | Image URL | `{"type": "image_url", "image_url": {"url": "https://..."}}` |
+| `input_audio` | Audio | `{"type": "input_audio", "input_audio": {"data": "https://..."}}` |
+| `file` | File | `{"type": "file", "file": {"file_data": "https://..."}}` |
+
+**Notes**:
+
+- `image_url/input_audio/file` only supports URL or Data URI (`data:<mime>;base64,...`); raw base64 will be rejected.
+- `reasoning_effort`: `none` disables thinking output; any other value enables it.
+- `grok-imagine-1.0-edit` requires an image; if multiple are provided, the last image and last text are used.
+- `grok-imagine-1.0-video` supports text-to-video and image-to-video via `image_url`.
+- Any other parameters will be discarded and ignored.
+
+<br>
+
+</details>
+
+<br>
+
+### `POST /v1/images/generations`
+
+> Image generation endpoint
+
+```bash
+curl http://localhost:8000/v1/images/generations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $GROK2API_API_KEY" \
+  -d '{
+    "model": "grok-imagine-1.0",
+    "prompt": "A cat floating in space",
+    "n": 1
+  }'
+```
+
+<details>
+<summary>Supported request parameters</summary>
+
+<br>
+
+| Field | Type | Description | Allowed values |
+| :-- | :-- | :-- | :-- |
+| `model` | string | Image model ID | `grok-imagine-1.0` |
+| `prompt` | string | Prompt | - |
+| `n` | integer | Number of images | `1` - `10` (streaming: `1` or `2` only) |
+| `stream` | boolean | Enable streaming | `true`, `false` |
+| `size` | string | Image size | `1280x720`, `720x1280`, `1792x1024`, `1024x1792`, `1024x1024` |
+| `quality` | string | Image quality | - (not supported) |
+| `response_format` | string | Response format | `url`, `b64_json`, `base64` |
+| `style` | string | Style | - (not supported) |
+
+**Notes**:
+
+- `quality` and `style` are OpenAI compatibility placeholders and are not customizable yet.
+
+<br>
+
+</details>
+
+<br>
+
+### `POST /v1/images/edits`
+
+> Image edit endpoint (multipart/form-data)
+
+```bash
+curl http://localhost:8000/v1/images/edits \
+  -H "Authorization: Bearer $GROK2API_API_KEY" \
+  -F "model=grok-imagine-1.0-edit" \
+  -F "prompt=Make the image clearer" \
+  -F "image=@/path/to/image.png" \
+  -F "n=1"
+```
+
+<details>
+<summary>Supported request parameters</summary>
+
+<br>
+
+| Field | Type | Description | Allowed values |
+| :-- | :-- | :-- | :-- |
+| `model` | string | Image model ID | `grok-imagine-1.0-edit` |
+| `prompt` | string | Edit prompt | - |
+| `image` | file | Source image | `png`, `jpg`, `webp` |
+| `n` | integer | Number of images | `1` - `10` (streaming: `1` or `2` only) |
+| `stream` | boolean | Enable streaming | `true`, `false` |
+| `size` | string | Image size | `1280x720`, `720x1280`, `1792x1024`, `1024x1792`, `1024x1024` |
+| `quality` | string | Image quality | - (not supported) |
+| `response_format` | string | Response format | `url`, `b64_json`, `base64` |
+| `style` | string | Style | - (not supported) |
+
+**Notes**:
+
+- `quality` and `style` are OpenAI compatibility placeholders and are not customizable yet.
+
+<br>
+
+</details>
+
+<br>
+
+## Configuration
+
+Config file: `data/config.toml`
+
+> [!NOTE]
+> In production or behind a reverse proxy, make sure `app.app_url` is a publicly accessible URL,
+> otherwise file links may be incorrect or result in 403.
+
+> [!TIP]
+> **v2.0 config migration**: old configs are automatically migrated. The old `[grok]` section
+> is mapped into the new config structure.
+
+| Module | Field | Key | Description | Default |
+| :-- | :-- | :-- | :-- | :-- |
+| **app** | `app_url` | App URL | External base URL used for file links. | `http://127.0.0.1:8000` |
+|  | `app_key` | Admin password | Login password for admin panel. | `grok2api` |
+|  | `api_key` | API key | Optional API key for access. | `""` |
+|  | `image_format` | Image format | `url` or `base64`. | `url` |
+|  | `video_format` | Video format | `html` or `url` (processed link). | `html` |
+|  | `temporary` | Temporary chat | Enable temporary chat mode. | `true` |
+|  | `disable_memory` | Disable memory | Disable Grok memory. | `true` |
+|  | `stream` | Stream | Enable streaming by default. | `true` |
+|  | `thinking` | Thinking | Enable reasoning output. | `true` |
+|  | `dynamic_statsig` | Dynamic statsig | Generate dynamic Statsig values. | `true` |
+|  | `filter_tags` | Filter tags | Filter special tags in responses. | `["xaiartifact", "xai:tool_usage_card", "grok:render"]` |
+| **proxy** | `base_proxy_url` | Base proxy URL | Proxy to Grok web. | `""` |
+|  | `asset_proxy_url` | Asset proxy URL | Proxy to Grok assets (img/video). | `""` |
+|  | `cf_clearance` | CF Clearance | Cloudflare clearance cookie. | `""` |
+|  | `browser` | Browser fingerprint | curl_cffi fingerprint (e.g. chrome136). | `chrome136` |
+|  | `user_agent` | User-Agent | HTTP User-Agent string. | `Mozilla/5.0 (Macintosh; ...)` |
+| **voice** | `timeout` | Timeout | Voice request timeout (seconds). | `120` |
+| **chat** | `concurrent` | Concurrency | Reverse interface concurrency limit. | `10` |
+|  | `timeout` | Timeout | Reverse request timeout (seconds). | `60` |
+|  | `stream_timeout` | Stream idle timeout | Stream idle timeout (seconds). | `60` |
+| **video** | `concurrent` | Concurrency | Reverse interface concurrency limit. | `10` |
+|  | `timeout` | Timeout | Reverse request timeout (seconds). | `60` |
+|  | `stream_timeout` | Stream idle timeout | Stream idle timeout (seconds). | `60` |
+| **retry** | `max_retry` | Max retry | Max retries for upstream failures. | `3` |
+|  | `retry_status_codes` | Retry codes | HTTP status codes that trigger retry. | `[401, 429, 403]` |
+|  | `retry_backoff_base` | Backoff base | Retry backoff base seconds. | `0.5` |
+|  | `retry_backoff_factor` | Backoff factor | Exponential backoff factor. | `2.0` |
+|  | `retry_backoff_max` | Backoff max | Max delay per retry (seconds). | `30.0` |
+|  | `retry_budget` | Retry budget | Max total retry time (seconds). | `90.0` |
+| **image** | `timeout` | Timeout | WebSocket timeout (seconds). | `120` |
+|  | `stream_timeout` | Stream idle timeout | WS stream idle timeout (seconds). | `120` |
+|  | `final_timeout` | Final timeout | Wait time after medium image (seconds). | `15` |
+|  | `nsfw` | NSFW | Enable NSFW. | `true` |
+|  | `medium_min_bytes` | Medium min bytes | Minimum size for medium image. | `30000` |
+|  | `final_min_bytes` | Final min bytes | Minimum size for final image (JPG > 100KB typical). | `100000` |
+| **token** | `auto_refresh` | Auto refresh | Enable token auto refresh. | `true` |
+|  | `refresh_interval_hours` | Refresh interval | Basic token refresh interval (hours). | `8` |
+|  | `super_refresh_interval_hours` | Super refresh interval | Super token refresh interval (hours). | `2` |
+|  | `fail_threshold` | Fail threshold | Consecutive failures to disable. | `5` |
+|  | `save_delay_ms` | Save delay | Merge write delay (ms). | `500` |
+|  | `usage_flush_interval_sec` | Usage flush interval | Minimum interval to flush usage fields to DB (seconds). | `5` |
+|  | `reload_interval_sec` | Reload interval | Multi-worker token reload interval (seconds). | `30` |
+| **cache** | `enable_auto_clean` | Auto clean | Enable cache auto cleanup. | `true` |
+|  | `limit_mb` | Size limit | Cleanup threshold (MB). | `1024` |
+| **asset** | `upload_concurrent` | Upload concurrency | Max upload concurrency (recommended 30). | `30` |
+|  | `upload_timeout` | Upload timeout | Upload timeout (seconds). | `60` |
+|  | `download_concurrent` | Download concurrency | Max download concurrency (recommended 30). | `30` |
+|  | `download_timeout` | Download timeout | Download timeout (seconds). | `60` |
+|  | `list_concurrent` | List concurrency | Max list concurrency (recommended 10). | `10` |
+|  | `list_timeout` | List timeout | List timeout (seconds). | `60` |
+|  | `list_batch_size` | List batch size | Tokens per list batch (recommended 10). | `10` |
+|  | `delete_concurrent` | Delete concurrency | Max delete concurrency (recommended 10). | `10` |
+|  | `delete_timeout` | Delete timeout | Delete timeout (seconds). | `60` |
+|  | `delete_batch_size` | Delete batch size | Tokens per delete batch (recommended 10). | `10` |
+| **nsfw** | `concurrent` | Concurrency | NSFW batch enable concurrency (recommended 10). | `10` |
+|  | `batch_size` | Batch size | NSFW batch size (recommended 50). | `50` |
+|  | `timeout` | Timeout | NSFW request timeout (seconds). | `60` |
+| **usage** | `concurrent` | Concurrency | Usage refresh concurrency (recommended 10). | `10` |
+|  | `batch_size` | Batch size | Usage batch size (recommended 50). | `50` |
+|  | `timeout` | Timeout | Usage request timeout (seconds). | `60` |
+
+<br>
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Chenyme/grok2api&type=Timeline)](https://star-history.com/#Chenyme/grok2api&Timeline)

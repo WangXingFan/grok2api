@@ -48,6 +48,10 @@ def json_loads(obj: str | bytes) -> Any:
     return orjson.loads(obj)
 
 
+def json_dumps_sorted(obj: Any) -> str:
+    return orjson.dumps(obj, option=orjson.OPT_SORT_KEYS).decode("utf-8")
+
+
 class StorageError(Exception):
     """存储服务基础异常"""
 
@@ -76,6 +80,59 @@ class BaseStorage(abc.ABC):
     async def save_tokens(self, data: Dict[str, Any]):
         """保存所有 Token"""
         pass
+
+    async def save_tokens_delta(
+        self, updated: list[Dict[str, Any]], deleted: Optional[list[str]] = None
+    ):
+        """增量保存 Token（默认回退到全量保存）"""
+        existing = await self.load_tokens() or {}
+
+        deleted_set = set(deleted or [])
+        if deleted_set:
+            for pool_name, tokens in list(existing.items()):
+                if not isinstance(tokens, list):
+                    continue
+                filtered = []
+                for item in tokens:
+                    if isinstance(item, str):
+                        token_str = item
+                    elif isinstance(item, dict):
+                        token_str = item.get("token")
+                    else:
+                        token_str = None
+                    if token_str and token_str in deleted_set:
+                        continue
+                    filtered.append(item)
+                existing[pool_name] = filtered
+
+        for item in updated or []:
+            if not isinstance(item, dict):
+                continue
+            pool_name = item.get("pool_name")
+            token_str = item.get("token")
+            if not pool_name or not token_str:
+                continue
+            pool_list = existing.setdefault(pool_name, [])
+            normalized = {
+                k: v
+                for k, v in item.items()
+                if k not in ("pool_name", "_update_kind")
+            }
+            replaced = False
+            for idx, current in enumerate(pool_list):
+                if isinstance(current, str):
+                    if current == token_str:
+                        pool_list[idx] = normalized
+                        replaced = True
+                        break
+                elif isinstance(current, dict) and current.get("token") == token_str:
+                    pool_list[idx] = normalized
+                    replaced = True
+                    break
+            if not replaced:
+                pool_list.append(normalized)
+
+        await self.save_tokens(existing)
 
     @abc.abstractmethod
     async def close(self):
@@ -308,8 +365,6 @@ class RedisStorage(BaseStorage):
 
     async def save_config(self, data: Dict[str, Any]):
         """保存配置到 Redis Hash"""
-        if not data:
-            return
         try:
             mapping = {}
             for section, items in data.items():
@@ -319,6 +374,7 @@ class RedisStorage(BaseStorage):
                     composite_key = f"{section}.{key}"
                     mapping[composite_key] = json_dumps(val)
 
+            await self.redis.delete(self.config_key)
             if mapping:
                 await self.redis.hset(self.config_key, mapping=mapping)
         except Exception as e:
@@ -542,7 +598,20 @@ class SQLStorage(BaseStorage):
                     CREATE TABLE IF NOT EXISTS tokens (
                         token VARCHAR(512) PRIMARY KEY,
                         pool_name VARCHAR(64) NOT NULL,
+                        status VARCHAR(16),
+                        quota INT,
+                        created_at BIGINT,
+                        last_used_at BIGINT,
+                        use_count INT,
+                        fail_count INT,
+                        last_fail_at BIGINT,
+                        last_fail_reason TEXT,
+                        last_sync_at BIGINT,
+                        tags TEXT,
+                        note TEXT,
+                        last_asset_clear_at BIGINT,
                         data TEXT,
+                        data_hash CHAR(64),
                         updated_at BIGINT
                     )
                 """)
@@ -561,12 +630,55 @@ class SQLStorage(BaseStorage):
                 )
 
                 # 索引
-                try:
+                if self.dialect in ("postgres", "postgresql", "pgsql"):
                     await conn.execute(
-                        text("CREATE INDEX idx_tokens_pool ON tokens (pool_name)")
+                        text(
+                            "CREATE INDEX IF NOT EXISTS idx_tokens_pool ON tokens (pool_name)"
+                        )
                     )
-                except Exception:
-                    pass
+                else:
+                    try:
+                        await conn.execute(
+                            text("CREATE INDEX idx_tokens_pool ON tokens (pool_name)")
+                        )
+                    except Exception:
+                        pass
+
+                # 补齐旧表字段
+                columns = [
+                    ("status", "VARCHAR(16)"),
+                    ("quota", "INT"),
+                    ("created_at", "BIGINT"),
+                    ("last_used_at", "BIGINT"),
+                    ("use_count", "INT"),
+                    ("fail_count", "INT"),
+                    ("last_fail_at", "BIGINT"),
+                    ("last_fail_reason", "TEXT"),
+                    ("last_sync_at", "BIGINT"),
+                    ("tags", "TEXT"),
+                    ("note", "TEXT"),
+                    ("last_asset_clear_at", "BIGINT"),
+                    ("data", "TEXT"),
+                    ("data_hash", "CHAR(64)"),
+                    ("updated_at", "BIGINT"),
+                ]
+                if self.dialect in ("postgres", "postgresql", "pgsql"):
+                    for col_name, col_type in columns:
+                        await conn.execute(
+                            text(
+                                f"ALTER TABLE tokens ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
+                            )
+                        )
+                else:
+                    for col_name, col_type in columns:
+                        try:
+                            await conn.execute(
+                                text(
+                                    f"ALTER TABLE tokens ADD COLUMN {col_name} {col_type}"
+                                )
+                            )
+                        except Exception:
+                            pass
 
                 # 尝试兼容旧表结构
                 try:
@@ -587,10 +699,160 @@ class SQLStorage(BaseStorage):
                 except Exception:
                     pass
 
+            await self._migrate_legacy_tokens()
             self._initialized = True
         except Exception as e:
             logger.error(f"SQLStorage: Schema 初始化失败: {e}")
             raise
+
+    def _normalize_status(self, status: Any) -> Any:
+        if isinstance(status, str) and status.startswith("TokenStatus."):
+            return status.split(".", 1)[1].lower()
+        if isinstance(status, Enum):
+            return status.value
+        return status
+
+    def _normalize_tags(self, tags: Any) -> Optional[str]:
+        if tags is None:
+            return None
+        if isinstance(tags, str):
+            try:
+                parsed = json_loads(tags)
+                if isinstance(parsed, list):
+                    return tags
+            except Exception:
+                pass
+            return json_dumps([tags])
+        return json_dumps(tags)
+
+    def _parse_tags(self, tags: Any) -> Optional[list]:
+        if tags is None:
+            return None
+        if isinstance(tags, str):
+            try:
+                parsed = json_loads(tags)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                return []
+        if isinstance(tags, list):
+            return tags
+        return []
+
+    def _token_to_row(self, token_data: Dict[str, Any], pool_name: str) -> Dict[str, Any]:
+        token_str = token_data.get("token")
+        if isinstance(token_str, str) and token_str.startswith("sso="):
+            token_str = token_str[4:]
+
+        status = self._normalize_status(token_data.get("status"))
+        tags_json = self._normalize_tags(token_data.get("tags"))
+        data_json = json_dumps_sorted(token_data)
+        data_hash = hashlib.sha256(data_json.encode("utf-8")).hexdigest()
+        note = token_data.get("note")
+        if note is None:
+            note = ""
+
+        return {
+            "token": token_str,
+            "pool_name": pool_name,
+            "status": status,
+            "quota": token_data.get("quota"),
+            "created_at": token_data.get("created_at"),
+            "last_used_at": token_data.get("last_used_at"),
+            "use_count": token_data.get("use_count"),
+            "fail_count": token_data.get("fail_count"),
+            "last_fail_at": token_data.get("last_fail_at"),
+            "last_fail_reason": token_data.get("last_fail_reason"),
+            "last_sync_at": token_data.get("last_sync_at"),
+            "tags": tags_json,
+            "note": note,
+            "last_asset_clear_at": token_data.get("last_asset_clear_at"),
+            "data": data_json,
+            "data_hash": data_hash,
+            "updated_at": 0,
+        }
+
+    async def _migrate_legacy_tokens(self):
+        """将旧版 data JSON 回填到平铺字段"""
+        from sqlalchemy import text
+
+        try:
+            async with self.async_session() as session:
+                try:
+                    res = await session.execute(
+                        text(
+                            "SELECT token FROM tokens "
+                            "WHERE data IS NOT NULL AND "
+                            "(status IS NULL OR quota IS NULL OR created_at IS NULL) "
+                            "LIMIT 1"
+                        )
+                    )
+                    if not res.first():
+                        return
+                except Exception as e:
+                    msg = str(e).lower()
+                    if "undefinedcolumn" in msg or "undefined column" in msg:
+                        return
+                    raise
+
+                res = await session.execute(
+                    text(
+                        "SELECT token, pool_name, data FROM tokens "
+                        "WHERE data IS NOT NULL AND "
+                        "(status IS NULL OR quota IS NULL OR created_at IS NULL)"
+                    )
+                )
+                rows = res.fetchall()
+                if not rows:
+                    return
+
+                params = []
+                for token_str, pool_name, data_json in rows:
+                    if not data_json:
+                        continue
+                    try:
+                        if isinstance(data_json, str):
+                            t_data = json_loads(data_json)
+                        else:
+                            t_data = data_json
+                        if not isinstance(t_data, dict):
+                            continue
+                        t_data = dict(t_data)
+                        t_data["token"] = token_str
+                        row = self._token_to_row(t_data, pool_name)
+                        params.append(row)
+                    except Exception:
+                        continue
+
+                if not params:
+                    return
+
+                await session.execute(
+                    text(
+                        "UPDATE tokens SET "
+                        "pool_name=:pool_name, "
+                        "status=:status, "
+                        "quota=:quota, "
+                        "created_at=:created_at, "
+                        "last_used_at=:last_used_at, "
+                        "use_count=:use_count, "
+                        "fail_count=:fail_count, "
+                        "last_fail_at=:last_fail_at, "
+                        "last_fail_reason=:last_fail_reason, "
+                        "last_sync_at=:last_sync_at, "
+                        "tags=:tags, "
+                        "note=:note, "
+                        "last_asset_clear_at=:last_asset_clear_at, "
+                        "data=:data, "
+                        "data_hash=:data_hash, "
+                        "updated_at=:updated_at "
+                        "WHERE token=:token"
+                    ),
+                    params,
+                )
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"SQLStorage: 旧数据回填失败: {e}")
 
     @asynccontextmanager
     async def acquire_lock(self, name: str, timeout: int = 10):
@@ -619,7 +881,7 @@ class SQLStorage(BaseStorage):
                         pass
         elif self.dialect in ("postgres", "postgresql", "pgsql"):
             lock_key = int.from_bytes(
-                hashlib.sha256(name.encode("utf-8")).digest()[:8], "big", signed=False
+                hashlib.sha256(name.encode("utf-8")).digest()[:8], "big", signed=True
             )
             async with self.async_session() as session:
                 start = time.monotonic()
@@ -690,25 +952,28 @@ class SQLStorage(BaseStorage):
 
         try:
             async with self.async_session() as session:
+                await session.execute(text("DELETE FROM app_config"))
+
+                params = []
                 for section, items in data.items():
                     if not isinstance(items, dict):
                         continue
                     for key, val in items.items():
-                        val_str = json_dumps(val)
+                        params.append(
+                            {
+                                "s": section,
+                                "k": key,
+                                "v": json_dumps(val),
+                            }
+                        )
 
-                        # Upsert 逻辑 (简单实现: Delete + Insert)
-                        await session.execute(
-                            text(
-                                "DELETE FROM app_config WHERE section=:s AND key_name=:k"
-                            ),
-                            {"s": section, "k": key},
-                        )
-                        await session.execute(
-                            text(
-                                "INSERT INTO app_config (section, key_name, value) VALUES (:s, :k, :v)"
-                            ),
-                            {"s": section, "k": key, "v": val_str},
-                        )
+                if params:
+                    await session.execute(
+                        text(
+                            "INSERT INTO app_config (section, key_name, value) VALUES (:s, :k, :v)"
+                        ),
+                        params,
+                    )
                 await session.commit()
         except Exception as e:
             logger.error(f"SQLStorage: 保存配置失败: {e}")
@@ -720,22 +985,83 @@ class SQLStorage(BaseStorage):
 
         try:
             async with self.async_session() as session:
-                res = await session.execute(text("SELECT pool_name, data FROM tokens"))
+                res = await session.execute(
+                    text(
+                        "SELECT token, pool_name, status, quota, created_at, "
+                        "last_used_at, use_count, fail_count, last_fail_at, "
+                        "last_fail_reason, last_sync_at, tags, note, "
+                        "last_asset_clear_at, data "
+                        "FROM tokens"
+                    )
+                )
                 rows = res.fetchall()
                 if not rows:
                     return None
 
                 pools = {}
-                for pool_name, data_json in rows:
+                for (
+                    token_str,
+                    pool_name,
+                    status,
+                    quota,
+                    created_at,
+                    last_used_at,
+                    use_count,
+                    fail_count,
+                    last_fail_at,
+                    last_fail_reason,
+                    last_sync_at,
+                    tags,
+                    note,
+                    last_asset_clear_at,
+                    data_json,
+                ) in rows:
                     if pool_name not in pools:
                         pools[pool_name] = []
 
                     try:
-                        if isinstance(data_json, str):
-                            t_data = json_loads(data_json)
-                        else:
-                            t_data = data_json
-                        pools[pool_name].append(t_data)
+                        token_data = {}
+                        if token_str:
+                            token_data["token"] = token_str
+                        if status is not None:
+                            token_data["status"] = self._normalize_status(status)
+                        if quota is not None:
+                            token_data["quota"] = int(quota)
+                        if created_at is not None:
+                            token_data["created_at"] = int(created_at)
+                        if last_used_at is not None:
+                            token_data["last_used_at"] = int(last_used_at)
+                        if use_count is not None:
+                            token_data["use_count"] = int(use_count)
+                        if fail_count is not None:
+                            token_data["fail_count"] = int(fail_count)
+                        if last_fail_at is not None:
+                            token_data["last_fail_at"] = int(last_fail_at)
+                        if last_fail_reason is not None:
+                            token_data["last_fail_reason"] = last_fail_reason
+                        if last_sync_at is not None:
+                            token_data["last_sync_at"] = int(last_sync_at)
+                        if tags is not None:
+                            token_data["tags"] = self._parse_tags(tags)
+                        if note is not None:
+                            token_data["note"] = note
+                        if last_asset_clear_at is not None:
+                            token_data["last_asset_clear_at"] = int(
+                                last_asset_clear_at
+                            )
+
+                        legacy_data = None
+                        if data_json:
+                            if isinstance(data_json, str):
+                                legacy_data = json_loads(data_json)
+                            else:
+                                legacy_data = data_json
+                        if isinstance(legacy_data, dict):
+                            for key, val in legacy_data.items():
+                                if key not in token_data or token_data[key] is None:
+                                    token_data[key] = val
+
+                        pools[pool_name].append(token_data)
                     except Exception:
                         pass
                 return pools
@@ -747,33 +1073,216 @@ class SQLStorage(BaseStorage):
         await self._ensure_schema()
         from sqlalchemy import text
 
+        if data is None:
+            return
+
+        updates = []
+        new_tokens = set()
+        for pool_name, tokens in (data or {}).items():
+            for t in tokens:
+                if isinstance(t, dict):
+                    token_data = dict(t)
+                elif isinstance(t, str):
+                    token_data = {"token": t}
+                else:
+                    continue
+                token_str = token_data.get("token")
+                if not token_str:
+                    continue
+                if token_str.startswith("sso="):
+                    token_str = token_str[4:]
+                token_data["token"] = token_str
+                token_data["pool_name"] = pool_name
+                token_data["_update_kind"] = "state"
+                updates.append(token_data)
+                new_tokens.add(token_str)
+
         try:
+            existing_tokens = set()
             async with self.async_session() as session:
-                await session.execute(text("DELETE FROM tokens"))
-
-                params = []
-                for pool_name, tokens in data.items():
-                    for t in tokens:
-                        params.append(
-                            {
-                                "token": t.get("token"),
-                                "pool_name": pool_name,
-                                "data": json_dumps(t),
-                                "updated_at": 0,
-                            }
-                        )
-
-                if params:
-                    # 批量插入
-                    await session.execute(
-                        text(
-                            "INSERT INTO tokens (token, pool_name, data, updated_at) VALUES (:token, :pool_name, :data, :updated_at)"
-                        ),
-                        params,
-                    )
-                await session.commit()
+                res = await session.execute(text("SELECT token FROM tokens"))
+                rows = res.fetchall()
+                existing_tokens = {row[0] for row in rows}
+            tokens_to_delete = list(existing_tokens - new_tokens)
+            await self.save_tokens_delta(updates, tokens_to_delete)
         except Exception as e:
             logger.error(f"SQLStorage: 保存 Token 失败: {e}")
+            raise
+
+    async def save_tokens_delta(
+        self, updated: list[Dict[str, Any]], deleted: Optional[list[str]] = None
+    ):
+        await self._ensure_schema()
+        from sqlalchemy import bindparam, text
+
+        try:
+            async with self.async_session() as session:
+                deleted_set = set(deleted or [])
+                if deleted_set:
+                    delete_stmt = text(
+                        "DELETE FROM tokens WHERE token IN :tokens"
+                    ).bindparams(bindparam("tokens", expanding=True))
+                    chunk_size = 500
+                    deleted_list = list(deleted_set)
+                    for i in range(0, len(deleted_list), chunk_size):
+                        chunk = deleted_list[i : i + chunk_size]
+                        await session.execute(delete_stmt, {"tokens": chunk})
+
+                updates = []
+                usage_updates = []
+
+                for item in updated or []:
+                    if not isinstance(item, dict):
+                        continue
+                    pool_name = item.get("pool_name")
+                    token_str = item.get("token")
+                    if not pool_name or not token_str:
+                        continue
+                    if token_str in deleted_set:
+                        continue
+                    update_kind = item.get("_update_kind", "state")
+                    token_data = {
+                        k: v
+                        for k, v in item.items()
+                        if k not in ("pool_name", "_update_kind")
+                    }
+                    row = self._token_to_row(token_data, pool_name)
+                    if update_kind == "usage":
+                        usage_updates.append(row)
+                    else:
+                        updates.append(row)
+
+                if updates:
+                    if self.dialect in ("mysql", "mariadb"):
+                        upsert_stmt = text(
+                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "last_used_at, use_count, fail_count, last_fail_at, "
+                            "last_fail_reason, last_sync_at, tags, note, "
+                            "last_asset_clear_at, data, data_hash, updated_at) "
+                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            ":last_used_at, :use_count, :fail_count, :last_fail_at, "
+                            ":last_fail_reason, :last_sync_at, :tags, :note, "
+                            ":last_asset_clear_at, :data, :data_hash, :updated_at) "
+                            "ON DUPLICATE KEY UPDATE "
+                            "pool_name=VALUES(pool_name), "
+                            "status=VALUES(status), "
+                            "quota=VALUES(quota), "
+                            "created_at=VALUES(created_at), "
+                            "last_used_at=VALUES(last_used_at), "
+                            "use_count=VALUES(use_count), "
+                            "fail_count=VALUES(fail_count), "
+                            "last_fail_at=VALUES(last_fail_at), "
+                            "last_fail_reason=VALUES(last_fail_reason), "
+                            "last_sync_at=VALUES(last_sync_at), "
+                            "tags=VALUES(tags), "
+                            "note=VALUES(note), "
+                            "last_asset_clear_at=VALUES(last_asset_clear_at), "
+                            "data=VALUES(data), "
+                            "data_hash=VALUES(data_hash), "
+                            "updated_at=VALUES(updated_at)"
+                        )
+                    elif self.dialect in ("postgres", "postgresql", "pgsql"):
+                        upsert_stmt = text(
+                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "last_used_at, use_count, fail_count, last_fail_at, "
+                            "last_fail_reason, last_sync_at, tags, note, "
+                            "last_asset_clear_at, data, data_hash, updated_at) "
+                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            ":last_used_at, :use_count, :fail_count, :last_fail_at, "
+                            ":last_fail_reason, :last_sync_at, :tags, :note, "
+                            ":last_asset_clear_at, :data, :data_hash, :updated_at) "
+                            "ON CONFLICT (token) DO UPDATE SET "
+                            "pool_name=EXCLUDED.pool_name, "
+                            "status=EXCLUDED.status, "
+                            "quota=EXCLUDED.quota, "
+                            "created_at=EXCLUDED.created_at, "
+                            "last_used_at=EXCLUDED.last_used_at, "
+                            "use_count=EXCLUDED.use_count, "
+                            "fail_count=EXCLUDED.fail_count, "
+                            "last_fail_at=EXCLUDED.last_fail_at, "
+                            "last_fail_reason=EXCLUDED.last_fail_reason, "
+                            "last_sync_at=EXCLUDED.last_sync_at, "
+                            "tags=EXCLUDED.tags, "
+                            "note=EXCLUDED.note, "
+                            "last_asset_clear_at=EXCLUDED.last_asset_clear_at, "
+                            "data=EXCLUDED.data, "
+                            "data_hash=EXCLUDED.data_hash, "
+                            "updated_at=EXCLUDED.updated_at"
+                        )
+                    else:
+                        upsert_stmt = text(
+                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "last_used_at, use_count, fail_count, last_fail_at, "
+                            "last_fail_reason, last_sync_at, tags, note, "
+                            "last_asset_clear_at, data, data_hash, updated_at) "
+                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            ":last_used_at, :use_count, :fail_count, :last_fail_at, "
+                            ":last_fail_reason, :last_sync_at, :tags, :note, "
+                            ":last_asset_clear_at, :data, :data_hash, :updated_at)"
+                        )
+                    await session.execute(upsert_stmt, updates)
+
+                if usage_updates:
+                    if self.dialect in ("mysql", "mariadb"):
+                        usage_stmt = text(
+                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "last_used_at, use_count, fail_count, last_fail_at, "
+                            "last_fail_reason, last_sync_at, tags, note, "
+                            "last_asset_clear_at, data, data_hash, updated_at) "
+                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            ":last_used_at, :use_count, :fail_count, :last_fail_at, "
+                            ":last_fail_reason, :last_sync_at, :tags, :note, "
+                            ":last_asset_clear_at, :data, :data_hash, :updated_at) "
+                            "ON DUPLICATE KEY UPDATE "
+                            "pool_name=VALUES(pool_name), "
+                            "status=VALUES(status), "
+                            "quota=VALUES(quota), "
+                            "last_used_at=VALUES(last_used_at), "
+                            "use_count=VALUES(use_count), "
+                            "fail_count=VALUES(fail_count), "
+                            "last_fail_at=VALUES(last_fail_at), "
+                            "last_fail_reason=VALUES(last_fail_reason), "
+                            "last_sync_at=VALUES(last_sync_at), "
+                            "updated_at=VALUES(updated_at)"
+                        )
+                    elif self.dialect in ("postgres", "postgresql", "pgsql"):
+                        usage_stmt = text(
+                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "last_used_at, use_count, fail_count, last_fail_at, "
+                            "last_fail_reason, last_sync_at, tags, note, "
+                            "last_asset_clear_at, data, data_hash, updated_at) "
+                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            ":last_used_at, :use_count, :fail_count, :last_fail_at, "
+                            ":last_fail_reason, :last_sync_at, :tags, :note, "
+                            ":last_asset_clear_at, :data, :data_hash, :updated_at) "
+                            "ON CONFLICT (token) DO UPDATE SET "
+                            "pool_name=EXCLUDED.pool_name, "
+                            "status=EXCLUDED.status, "
+                            "quota=EXCLUDED.quota, "
+                            "last_used_at=EXCLUDED.last_used_at, "
+                            "use_count=EXCLUDED.use_count, "
+                            "fail_count=EXCLUDED.fail_count, "
+                            "last_fail_at=EXCLUDED.last_fail_at, "
+                            "last_fail_reason=EXCLUDED.last_fail_reason, "
+                            "last_sync_at=EXCLUDED.last_sync_at, "
+                            "updated_at=EXCLUDED.updated_at"
+                        )
+                    else:
+                        usage_stmt = text(
+                            "INSERT INTO tokens (token, pool_name, status, quota, created_at, "
+                            "last_used_at, use_count, fail_count, last_fail_at, "
+                            "last_fail_reason, last_sync_at, tags, note, "
+                            "last_asset_clear_at, data, data_hash, updated_at) "
+                            "VALUES (:token, :pool_name, :status, :quota, :created_at, "
+                            ":last_used_at, :use_count, :fail_count, :last_fail_at, "
+                            ":last_fail_reason, :last_sync_at, :tags, :note, "
+                            ":last_asset_clear_at, :data, :data_hash, :updated_at)"
+                        )
+                    await session.execute(usage_stmt, usage_updates)
+
+                await session.commit()
+        except Exception as e:
+            logger.error(f"SQLStorage: 增量保存 Token 失败: {e}")
             raise
 
     async def close(self):
