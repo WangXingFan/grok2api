@@ -2,14 +2,16 @@
 Chat Completions API 路由
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 import base64
 import binascii
 import time
+import uuid as _uuid
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
+import orjson
 
 from app.services.grok.services.chat import ChatService
 from app.services.grok.services.image import ImageGenerationService
@@ -497,6 +499,77 @@ def validate_request(request: ChatCompletionRequest):
         request.video_config = config
 
 
+async def _wrap_image_stream_as_chat(
+    raw_stream: AsyncGenerator[str, None],
+    model: str,
+    response_field: str,
+) -> AsyncGenerator[str, None]:
+    """Convert image generation SSE stream to OpenAI chat completion chunks."""
+    chat_id = f"chatcmpl-{_uuid.uuid4().hex[:12]}"
+    created = int(time.time())
+
+    def _chunk(delta: dict, finish_reason=None) -> str:
+        return (
+            "data: "
+            + orjson.dumps(
+                {
+                    "id": chat_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": delta,
+                            "finish_reason": finish_reason,
+                        }
+                    ],
+                }
+            ).decode()
+            + "\n\n"
+        )
+
+    yield _chunk({"role": "assistant"})
+
+    async for raw in raw_stream:
+        if not raw or not raw.strip():
+            continue
+        event_type = ""
+        data_str = ""
+        for line in raw.strip().split("\n"):
+            if line.startswith("event: "):
+                event_type = line[7:].strip()
+            elif line.startswith("data: "):
+                data_str = line[6:].strip()
+        if not data_str:
+            continue
+
+        if event_type == "image_generation.completed":
+            try:
+                data = orjson.loads(data_str)
+            except Exception:
+                continue
+            image_value = data.get(response_field, "")
+            if not image_value:
+                continue
+            if response_field == "url":
+                content = f"![image]({image_value})"
+            else:
+                content = f"![image](data:image/png;base64,{image_value})"
+            yield _chunk({"content": content})
+
+        elif event_type == "error":
+            try:
+                data = orjson.loads(data_str)
+            except Exception:
+                continue
+            error_msg = data.get("error", {}).get("message", "Image generation failed")
+            yield _chunk({"content": f"[Error: {error_msg}]"})
+
+    yield _chunk({}, finish_reason="stop")
+    yield "data: [DONE]\n\n"
+
+
 router = APIRouter(tags=["Chat"])
 
 
@@ -560,8 +633,11 @@ async def chat_completions(request: ChatCompletionRequest):
         )
 
         if result.stream:
+            wrapped = _wrap_image_stream_as_chat(
+                result.data, request.model, response_field
+            )
             return StreamingResponse(
-                result.data,
+                wrapped,
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
             )
@@ -628,8 +704,11 @@ async def chat_completions(request: ChatCompletionRequest):
         )
 
         if result.stream:
+            wrapped = _wrap_image_stream_as_chat(
+                result.data, request.model, response_field
+            )
             return StreamingResponse(
-                result.data,
+                wrapped,
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
             )
