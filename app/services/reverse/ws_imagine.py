@@ -28,27 +28,15 @@ class ImagineWebSocketReverse:
 
     def __init__(self) -> None:
         self._url_pattern = re.compile(r"/images/([a-f0-9-]+)\.(png|jpg|jpeg)")
-        self._generated_pattern = re.compile(
-            r"/generated/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-part-\d+)?/image\.(png|jpg|jpeg)"
-        )
-        self._draft_pattern = re.compile(r"-part-\d+/")
         self._client = WebSocketClient()
 
     def _parse_image_url(self, url: str) -> tuple[Optional[str], Optional[str]]:
-        match = self._generated_pattern.search(url or "")
-        if match:
-            return match.group(1), match.group(2).lower()
         match = self._url_pattern.search(url or "")
         if not match:
             return None, None
         return match.group(1), match.group(2).lower()
 
-    def _is_draft(self, url: str) -> bool:
-        return bool(self._draft_pattern.search(url or ""))
-
     def _is_final_image(self, url: str, blob_size: int, final_min_bytes: int) -> bool:
-        if self._is_draft(url):
-            return False
         url_lower = (url or "").lower()
         if url_lower.endswith((".jpg", ".jpeg")):
             return True
@@ -59,7 +47,6 @@ class ImagineWebSocketReverse:
             return None
 
         image_id, ext = self._parse_image_url(url)
-        is_draft = self._is_draft(url)
         image_id = image_id or uuid.uuid4().hex
         blob_size = len(blob)
         is_final = self._is_final_image(url, blob_size, final_min_bytes)
