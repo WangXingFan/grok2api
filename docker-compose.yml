@@ -1,7 +1,7 @@
 services:
   grok2api:
     container_name: grok2api
-    image: ghcr.io/chenyme/grok2api:latest
+    image: ghcr.io/wangxingfan/grok2api:latest
     ports:
       - "${HOST_PORT:-8000}:${SERVER_PORT:-8000}"
     environment:
