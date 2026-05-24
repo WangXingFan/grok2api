@@ -46,7 +46,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
+            type=raw,value=latest,enable=${{ github.event_name != 'pull_request' }}
             type=ref,event=tag
             type=semver,pattern={{version}}
 
