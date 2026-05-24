@@ -49,9 +49,11 @@ MODELS: tuple[ModelSpec, ...] = (
     ModelSpec("grok-4.20-reasoning",                    ModeId.FAST, Tier.BASIC, Capability.CHAT,           True, "Grok 4.20 Reasoning (Console)",         console_model="grok-4.20-0309-reasoning"),
     # Non-reasoning model — effort is not applicable.
     ModelSpec("grok-4.20-non-reasoning",                ModeId.FAST, Tier.BASIC, Capability.CHAT,           True, "Grok 4.20 Non-Reasoning (Console)",     console_model="grok-4.20-0309-non-reasoning"),
-    # Multi-agent — left default; effort behaviour with this variant has not
-    # been verified, so we don't auto-inject "high" to avoid surprising 400s.
-    ModelSpec("grok-4.20-multi-agent",                  ModeId.FAST, Tier.BASIC, Capability.CHAT,           True, "Grok 4.20 Multi-Agent (Console)",       console_model="grok-4.20-multi-agent-0309"),
+    # Multi-agent console model defaults to medium reasoning. Callers can
+    # still override with reasoning_effort/reasoning.effort.
+    ModelSpec("grok-4.20-multi-agent",                  ModeId.FAST, Tier.BASIC, Capability.CHAT,           True, "Grok 4.20 Multi-Agent (Console)",       console_model="grok-4.20-multi-agent-0309",     default_reasoning_effort="medium"),
+    ModelSpec("grok-4.20-multi-agent-console",          ModeId.FAST, Tier.BASIC, Capability.CHAT,           True, "Grok 4.20 Multi-Agent Console",         console_model="grok-4.20-multi-agent-0309",     default_reasoning_effort="medium"),
+    ModelSpec("grok-4.20-multi-agent-console-xhigh",    ModeId.FAST, Tier.BASIC, Capability.CHAT,           True, "Grok 4.20 Multi-Agent Console XHigh",   console_model="grok-4.20-multi-agent-0309",     default_reasoning_effort="xhigh"),
 
     # === Image ==============================================================
 

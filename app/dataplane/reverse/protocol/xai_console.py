@@ -46,6 +46,21 @@ from app.platform.config.snapshot import get_config
 from app.platform.errors import UpstreamError
 from app.platform.logging.logger import logger
 
+_CONSOLE_REASONING_EFFORT_ALIASES = {
+    "xhigh": "high",
+}
+
+
+def normalize_console_reasoning_effort(reasoning_effort: str | None) -> str | None:
+    """Return the upstream Console API effort value, or None to omit it."""
+    if not reasoning_effort:
+        return None
+    effort = reasoning_effort.strip().lower()
+    if not effort or effort == "none":
+        return None
+    return _CONSOLE_REASONING_EFFORT_ALIASES.get(effort, effort)
+
+
 # ---------------------------------------------------------------------------
 # Input conversion (OpenAI Chat Completions → console.x.ai input array)
 # ---------------------------------------------------------------------------
@@ -307,11 +322,11 @@ def build_console_payload(
         payload["temperature"] = temperature
     if top_p is not None:
         payload["top_p"] = top_p
-    # Console upstream accepts effort ∈ {"minimal", "low", "medium", "high"}.
-    # Map project-specific values: "none" → omit (emit_think handles client-side
-    # suppression separately); "xhigh" → "high" (upstream cap).
-    if reasoning_effort and reasoning_effort != "none":
-        upstream_effort = "high" if reasoning_effort == "xhigh" else reasoning_effort
+    # Console upstream accepts effort in {"minimal", "low", "medium", "high"}.
+    # Project-level "xhigh" is accepted as a highest-effort alias and mapped to
+    # the upstream cap, "high".
+    upstream_effort = normalize_console_reasoning_effort(reasoning_effort)
+    if upstream_effort:
         payload["reasoning"] = {"effort": upstream_effort}
     if tools:
         payload["tools"] = tools
@@ -876,6 +891,7 @@ class ConsoleStreamAdapter:
 __all__ = [
     "build_console_input",
     "build_console_payload",
+    "normalize_console_reasoning_effort",
     "convert_openai_tools_to_console",
     "convert_openai_tool_choice",
     "inject_web_search_tool",
